@@ -2,6 +2,8 @@
 // Distributed under the MIT software license
 
 import * as btc from '@scure/btc-signer';
+import { RawTx, RawOldTx } from '@scure/btc-signer/script';
+import { sha256 } from '@noble/hashes/sha256';
 import { hex } from '@scure/base';
 import type { KeyInfo, PartialSig } from './types';
 import {
@@ -217,9 +219,11 @@ export function updatePsbt({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const rawTx = hex.decode(txHex);
-    const tx = btc.Transaction.fromRaw(rawTx, { allowUnknownOutputs: true });
-    const out = tx.getOutput(vout);
+    const rawTxBytes = hex.decode(txHex);
+    // Use RawTx.decode instead of Transaction.fromRaw to avoid script
+    // validation that rejects bare P2PK and other non-wrapped output types.
+    const parsed = RawTx.decode(rawTxBytes);
+    const out = parsed.outputs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script ? Buffer.from(out.script) : undefined;
     if (!outputScript)
@@ -230,13 +234,17 @@ export function updatePsbt({
       throw new Error(
         `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
       );
+    // Compute txid: double-SHA256 of non-witness serialization, reversed
+    const nonWitnessSerialization = RawOldTx.encode(parsed);
+    const txidHash = sha256(sha256(nonWitnessSerialization));
+    const computedTxId = hex.encode(txidHash.slice().reverse());
     if (txId !== undefined) {
-      if (tx.id !== txId)
+      if (computedTxId !== txId)
         throw new Error(
           `Error: txId for ${txHex} and vout ${vout} does not correspond to ${txId}`
         );
     } else {
-      txId = tx.id;
+      txId = computedTxId;
     }
     if (value !== undefined) {
       if (Number(out.amount) !== value)
