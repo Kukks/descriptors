@@ -9,8 +9,8 @@
 import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
-import * as ecc from '@bitcoinerlab/secp256k1';
-const { Output, expand } = DescriptorsFactory(ecc);
+import { ECPair, BIP32 } from './helpers/crypto';
+const { Output, expand } = DescriptorsFactory({ ECPair, BIP32 });
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {

@@ -1,21 +1,81 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type {
-  PsbtInput,
-  Bip32Derivation,
-  TapBip32Derivation
-} from 'bip174/src/lib/interfaces';
-import type { KeyInfo } from './types';
+import * as btc from '@scure/btc-signer';
+import { hex } from '@scure/base';
+import type { KeyInfo, PartialSig } from './types';
 import {
-  payments,
   Network,
-  Psbt,
-  Transaction,
-  PsbtTxInput
-} from 'bitcoinjs-lib';
-import { encode, encodingLength } from 'varuint-bitcoin';
-interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
+  toPayment,
+  toBtcSignerNetwork,
+  varintEncodingLength,
+  varintEncode
+} from './compat';
+
+// Local type definitions replacing bip174 types
+interface Bip32Derivation {
+  masterFingerprint: Buffer;
+  pubkey: Buffer;
+  path: string;
+}
+interface TapBip32Derivation extends Bip32Derivation {
+  leafHashes: Buffer[];
+}
+interface PsbtInput {
+  witnessUtxo?: { script: Buffer; value: number };
+  nonWitnessUtxo?: Buffer;
+  partialSig?: PartialSig[];
+  witnessScript?: Buffer;
+  redeemScript?: Buffer;
+  bip32Derivation?: Bip32Derivation[];
+  tapBip32Derivation?: TapBip32Derivation[];
+  tapInternalKey?: Buffer;
+  [key: string]: unknown;
+}
+interface PsbtInputExtended extends PsbtInput {
+  hash: Buffer;
+  index: number;
+  sequence?: number;
+}
+
+/**
+ * This function must do two things:
+ * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
+ *   ie. `Can not finalize input #${inputIndex}`
+ * 2. Create the finalScriptSig and finalScriptWitness Buffers.
+ */
+type FinalScriptsFunc = (
+  inputIndex: number, // Which input is it?
+  input: PsbtInput, // The PSBT input contents
+  script: Buffer, // The "meaningful" locking script Buffer (redeemScript for P2SH etc.)
+  isSegwit: boolean, // Is it segwit?
+  isP2SH: boolean, // Is it P2SH?
+  isP2WSH: boolean // Is it P2WSH?
+) => {
+  finalScriptSig: Buffer | undefined;
+  finalScriptWitness: Buffer | undefined;
+};
+
+// We use bitcoinjs-lib compatible Psbt interface.
+// The actual Psbt class will be provided externally (from the consumer)
+// or we define a minimal interface for what we need.
+interface PsbtLike {
+  addInput(input: PsbtInputExtended): void;
+  addOutput(output: { script: Buffer; value: number }): void;
+  setLocktime(locktime: number): void;
+  locktime: number;
+  data: { inputs: PsbtInput[] };
+  txInputs: Array<{ sequence: number; index: number }>;
+  validateSignaturesOfInput(
+    index: number,
+    validator: (pubkey: Buffer, msghash: Buffer, signature: Buffer) => boolean
+  ): boolean;
+  finalizeInput(index: number, finalScriptsFunc?: FinalScriptsFunc): void;
+  signInput(index: number, signer: { publicKey: Buffer; sign(hash: Buffer): Buffer }): void;
+  signInputHD(index: number, hdNode: { publicKey: Buffer; fingerprint: Buffer; derivePath(path: string): { publicKey: Buffer; sign(hash: Buffer): Buffer } }): void;
+  signAllInputsHD(hdNode: { publicKey: Buffer; fingerprint: Buffer; derivePath(path: string): { publicKey: Buffer; sign(hash: Buffer): Buffer } }): void;
+}
+
 function reverseBuffer(buffer: Buffer): Buffer {
   if (buffer.length < 1) return buffer;
   let j = buffer.length - 1;
@@ -37,10 +97,10 @@ function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
 
   function writeVarInt(i: number): void {
     const currentLen = buffer.length;
-    const varintLen = encodingLength(i);
+    const varintLen = varintEncodingLength(i);
 
     buffer = Buffer.concat([buffer, Buffer.allocUnsafe(varintLen)]);
-    encode(i, buffer, currentLen);
+    varintEncode(i, buffer, currentLen);
   }
 
   function writeVarSlice(slice: Buffer): void {
@@ -58,28 +118,11 @@ function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
   return buffer;
 }
 
-/**
- * This function must do two things:
- * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
- *   ie. `Can not finalize input #${inputIndex}`
- * 2. Create the finalScriptSig and finalScriptWitness Buffers.
- */
-type FinalScriptsFunc = (
-  inputIndex: number, // Which input is it?
-  input: PsbtInput, // The PSBT input contents
-  script: Buffer, // The "meaningful" locking script Buffer (redeemScript for P2SH etc.)
-  isSegwit: boolean, // Is it segwit?
-  isP2SH: boolean, // Is it P2SH?
-  isP2WSH: boolean // Is it P2WSH?
-) => {
-  finalScriptSig: Buffer | undefined;
-  finalScriptWitness: Buffer | undefined;
-};
-
 export function finalScriptsFuncFactory(
   scriptSatisfaction: Buffer,
   network: Network
 ): FinalScriptsFunc {
+  const net = toBtcSignerNetwork(network);
   const finalScriptsFunc: FinalScriptsFunc = (
     _index,
     _input,
@@ -92,23 +135,21 @@ export function finalScriptsFuncFactory(
     let finalScriptSig: Buffer | undefined;
     //p2wsh
     if (isSegwit && !isP2SH) {
-      const payment = payments.p2wsh({
-        redeem: { input: scriptSatisfaction, output: lockingScript },
-        network
-      });
+      const innerPayment = { input: scriptSatisfaction, output: lockingScript } as any;
+      const payment = toPayment(
+        btc.p2wsh(innerPayment, net) as Record<string, unknown>
+      );
       if (!payment.witness)
         throw new Error(`Error: p2wsh failed producing a witness`);
       finalScriptWitness = witnessStackToScriptWitness(payment.witness);
     }
     //p2sh-p2wsh
     else if (isSegwit && isP2SH) {
-      const payment = payments.p2sh({
-        redeem: payments.p2wsh({
-          redeem: { input: scriptSatisfaction, output: lockingScript },
-          network
-        }),
-        network
-      });
+      const innerPayment = { input: scriptSatisfaction, output: lockingScript } as any;
+      const wshPayment = btc.p2wsh(innerPayment, net);
+      const payment = toPayment(
+        btc.p2sh(wshPayment, net) as Record<string, unknown>
+      );
       if (!payment.witness)
         throw new Error(`Error: p2sh-p2wsh failed producing a witness`);
       finalScriptWitness = witnessStackToScriptWitness(payment.witness);
@@ -116,10 +157,10 @@ export function finalScriptsFuncFactory(
     }
     //p2sh
     else {
-      finalScriptSig = payments.p2sh({
-        redeem: { input: scriptSatisfaction, output: lockingScript },
-        network
-      }).input;
+      const innerPayment = { input: scriptSatisfaction, output: lockingScript } as any;
+      finalScriptSig = toPayment(
+        btc.p2sh(innerPayment, net) as Record<string, unknown>
+      ).input;
     }
     return {
       finalScriptWitness,
@@ -148,7 +189,7 @@ export function updatePsbt({
   redeemScript,
   rbf
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   vout: number;
   txHex?: string;
   txId?: string;
@@ -176,10 +217,11 @@ export function updatePsbt({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const tx = Transaction.fromHex(txHex);
-    const out = tx?.outs?.[vout];
+    const rawTx = hex.decode(txHex);
+    const tx = btc.Transaction.fromRaw(rawTx);
+    const out = tx.getOutput(vout);
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
-    const outputScript = out.script;
+    const outputScript = out.script ? Buffer.from(out.script) : undefined;
     if (!outputScript)
       throw new Error(
         `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
@@ -189,20 +231,20 @@ export function updatePsbt({
         `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
       );
     if (txId !== undefined) {
-      if (tx.getId() !== txId)
+      if (tx.id !== txId)
         throw new Error(
           `Error: txId for ${txHex} and vout ${vout} does not correspond to ${txId}`
         );
     } else {
-      txId = tx.getId();
+      txId = tx.id;
     }
     if (value !== undefined) {
-      if (out.value !== value)
+      if (Number(out.amount) !== value)
         throw new Error(
           `Error: value for ${txHex} and vout ${vout} does not correspond to ${value}`
         );
     } else {
-      value = out.value;
+      value = Number(out.amount);
     }
   }
   if (txId === undefined || !value)
@@ -240,7 +282,7 @@ export function updatePsbt({
     index: vout
   };
   if (txHex !== undefined) {
-    input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
+    input.nonWitnessUtxo = Buffer.from(hex.decode(txHex));
   }
 
   if (tapInternalKey) {
@@ -267,7 +309,6 @@ export function updatePsbt({
     input.tapInternalKey = tapInternalKey;
 
     //TODO: currently only single-key taproot supported.
-    //https://github.com/bitcoinjs/bitcoinjs-lib/blob/6ba8bb3ce20ba533eeaba6939cfc2891576d9969/test/integration/taproot.spec.ts#L243
     if (tapBip32Derivation.length > 1)
       throw new Error('Only single key taproot inputs are currently supported');
   } else {
@@ -300,3 +341,5 @@ export function updatePsbt({
   psbt.addInput(input);
   return psbt.data.inputs.length - 1;
 }
+
+export type { PsbtInput, Bip32Derivation, TapBip32Derivation, PsbtLike };

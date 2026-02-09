@@ -1,16 +1,9 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network } from 'bitcoinjs-lib';
-import type { ECPairAPI, ECPairInterface } from 'ecpair';
-import type { BIP32API, BIP32Interface } from 'bip32';
+import { networks, Network } from './compat';
+import type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface } from './types';
 import type { KeyInfo } from './types';
-import {
-  LedgerState,
-  LedgerManager,
-  getLedgerMasterFingerPrint,
-  getLedgerXpub
-} from './ledger';
 
 import * as RE from './re';
 
@@ -153,6 +146,14 @@ export function parseKeyExpression({
     ecpair = ECPair.fromWIF(mWIF[0], network);
     //fromWIF will throw if the wif is not valid
     pubkey = ecpair.publicKey;
+    //Check segwit requires compressed keys
+    if (
+      typeof isSegwit === 'boolean' &&
+      isSegwit &&
+      pubkey.length !== 33
+    ) {
+      throw new Error(`Error: invalid pubkey`);
+    }
     //match xpub:
   } else if (
     (mXpubKey = actualKey.match(RE.anchorStartAndEnd(RE.reXpubKey))) !== null
@@ -229,87 +230,6 @@ function assertChangeIndexKeyPath({
     throw new Error(`Error: Pass change and index or neither`);
   if ((change !== undefined) === (keyPath !== undefined))
     throw new Error(`Error: Pass either change and index or a keyPath`);
-}
-
-/**
- * Constructs a key expression string for a Ledger device from the provided
- * components.
- *
- * This function assists in crafting key expressions tailored for Ledger
- * hardware wallets. It fetches the master fingerprint and xpub for a
- * specified origin path and then combines them with the input parameters.
- *
- * For detailed understanding and examples of terms like `originPath`,
- * `change`, and `keyPath`, refer to the documentation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}, which consists
- * of the reverse procedure.
- *
- * @returns {string} - The formed key expression for the Ledger device.
- */
-export async function keyExpressionLedger({
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerManager: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @hidden */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @overload */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}) {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
-  assertChangeIndexKeyPath({ change, index, keyPath });
-
-  const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerClient,
-    ledgerState
-  });
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerClient, ledgerState });
-
-  const keyRoot = `${origin}${xpub}`;
-  if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
-  else return `${keyRoot}/${change}/${index}`;
 }
 
 /**

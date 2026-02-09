@@ -1,9 +1,77 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
-import type { Payment, Network } from 'bitcoinjs-lib';
+import type { Payment, Network } from './compat';
+
+// ---- Replacement interfaces for ecpair / bip32 ----
+
+/**
+ * Interface for an EC key pair (replaces ecpair's ECPairInterface).
+ * Only the fields used by this library are included.
+ */
+export interface ECPairInterface {
+  publicKey: Buffer;
+  privateKey?: Buffer;
+  compressed: boolean;
+  network?: Network;
+  sign(hash: Buffer): Buffer;
+  verify(hash: Buffer, signature: Buffer): boolean;
+  toWIF(): string;
+  tweak(t: Buffer): ECPairInterface;
+}
+
+/**
+ * API for creating EC key pairs (replaces ecpair's ECPairAPI).
+ */
+export interface ECPairAPI {
+  fromPublicKey(publicKey: Buffer, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  fromPrivateKey(privateKey: Buffer, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  fromWIF(wif: string, network?: Network | Network[]): ECPairInterface;
+  makeRandom(options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  isPoint(p: Buffer | Uint8Array): boolean;
+}
+
+/**
+ * Interface for a BIP32 HD key (replaces bip32's BIP32Interface).
+ * Only the fields used by this library are included.
+ */
+export interface BIP32Interface {
+  publicKey: Buffer;
+  privateKey?: Buffer;
+  chainCode: Buffer;
+  fingerprint: Buffer;
+  depth: number;
+  index: number;
+  parentFingerprint: number;
+  network: Network;
+  derivePath(path: string): BIP32Interface;
+  derive(index: number): BIP32Interface;
+  deriveHardened(index: number): BIP32Interface;
+  neutered(): BIP32Interface;
+  toBase58(): string;
+  sign(hash: Buffer): Buffer;
+  verify(hash: Buffer, signature: Buffer): boolean;
+  isNeutered(): boolean;
+  toWIF(): string;
+}
+
+/**
+ * API for creating BIP32 keys (replaces bip32's BIP32API).
+ */
+export interface BIP32API {
+  fromBase58(base58: string, network?: Network): BIP32Interface;
+  fromPublicKey(publicKey: Buffer, chainCode: Buffer, network?: Network): BIP32Interface;
+  fromPrivateKey(privateKey: Buffer, chainCode: Buffer, network?: Network): BIP32Interface;
+  fromSeed(seed: Buffer, network?: Network): BIP32Interface;
+}
+
+/**
+ * PartialSig (replaces bip174's PartialSig)
+ */
+export interface PartialSig {
+  pubkey: Buffer;
+  signature: Buffer;
+}
 
 /**
  * Preimage
@@ -118,7 +186,7 @@ export interface TinySecp256k1Interface {
  */
 export type Expansion = {
   /**
-   * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
+   * The corresponding Payment for the provided expression, if applicable.
    */
   payment?: Payment;
 

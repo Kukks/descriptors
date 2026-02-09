@@ -1,23 +1,28 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
+
 //npm run test:integration
 
 console.log('Standard output integration tests');
-import { networks, Psbt, address } from 'bitcoinjs-lib';
+import { Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
+import { ECPair, BIP32, networks } from '../helpers/crypto';
+import { addressToOutputScript } from '../../src/compat';
 const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
+const FINAL_SCRIPTPUBKEY = addressToOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import {
   DescriptorsFactory,
   DescriptorInstance,
@@ -28,7 +33,7 @@ import {
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Descriptor } = DescriptorsFactory({ ECPair, BIP32 });
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:

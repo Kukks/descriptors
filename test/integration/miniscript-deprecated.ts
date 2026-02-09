@@ -1,9 +1,13 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
+
 //npm run test:integration
 
-import { networks, Psbt, address } from 'bitcoinjs-lib';
+import { Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
@@ -12,12 +16,14 @@ const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
+import { ECPair, BIP32, networks } from '../helpers/crypto';
+import { addressToOutputScript } from '../../src/compat';
 const BLOCKS = 5;
 const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
+const FINAL_SCRIPTPUBKEY = addressToOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const POLICY = (older: number, after: number) =>
@@ -27,12 +33,11 @@ console.log(
   `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
 );
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 
-const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Descriptor } = DescriptorsFactory({ ECPair, BIP32 });
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();

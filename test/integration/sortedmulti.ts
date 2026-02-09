@@ -1,15 +1,19 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
+
 //npm run test:integration:soft
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
-import * as ecc from '@bitcoinerlab/secp256k1';
 
+import { ECPair, BIP32, networks } from '../helpers/crypto';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 
 const regtestUtils = new RegtestUtils();
@@ -24,7 +28,7 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
-const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 const masterNode = BIP32.fromSeed(seed, NETWORK);
 
 // Helpers -----------------------------------------------------

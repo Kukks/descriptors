@@ -7,13 +7,13 @@
 // Note that the fixtures are generated using @bitcoinerlab/coinselect using
 // test/tools
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { Psbt } from 'bitcoinjs-lib';
+import { ECPair, BIP32 } from './helpers/crypto';
 import { DescriptorsFactory, OutputInstance } from '../dist';
 import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
-import * as secp256k1 from '@bitcoinerlab/secp256k1';
-const { Output } = DescriptorsFactory(secp256k1);
-import type { PartialSig } from 'bip174/src/lib/interfaces';
-import { encodingLength } from 'varuint-bitcoin';
+import type { PartialSig } from '../src/types';
+import { varintEncodingLength } from '../src/compat';
+const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 
 const isSegwitTx = (inputs: Array<OutputInstance>) =>
   inputs.some(input => input.isSegwit());
@@ -46,13 +46,20 @@ function vsize(
   if (isSegwitTxValue) totalWeight += 2;
 
   totalWeight += 8 * 4;
-  totalWeight += encodingLength(inputs.length) * 4;
-  totalWeight += encodingLength(outputs.length) * 4;
+  totalWeight += varintEncodingLength(inputs.length) * 4;
+  totalWeight += varintEncodingLength(outputs.length) * 4;
 
   return Math.ceil(totalWeight / 4);
 }
 
-const network = networks.regtest;
+const network = {
+  messagePrefix: '\x18Bitcoin Signed Message:\n',
+  bech32: 'bcrt',
+  bip32: { public: 0x043587cf, private: 0x04358394 },
+  pubKeyHash: 0x6f,
+  scriptHash: 0xc4,
+  wif: 0xef
+};
 
 interface TransactionFixture {
   fixture: string;
