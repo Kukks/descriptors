@@ -218,7 +218,7 @@ export function updatePsbt({
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
     const rawTx = hex.decode(txHex);
-    const tx = btc.Transaction.fromRaw(rawTx);
+    const tx = btc.Transaction.fromRaw(rawTx, { allowUnknownOutputs: true });
     const out = tx.getOutput(vout);
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script ? Buffer.from(out.script) : undefined;
