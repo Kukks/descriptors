@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build:src
+      - run: npm run test:unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Start regtest environment
+        run: |
+          docker pull bitcoinerlab/tape
+          docker run -d \
+            --name bitcoinerlab_tester \
+            -p 8080:8080 \
+            -p 60401:60401 \
+            -p 3002:3002 \
+            -p 5123:5000 \
+            bitcoinerlab/tape
+          echo "Waiting for regtest node to be ready..."
+          sleep 10
+          # Verify the regtest server is responding
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/1/b/best/height > /dev/null 2>&1; then
+              echo "Regtest server ready (attempt $i)"
+              break
+            fi
+            echo "Waiting... (attempt $i)"
+            sleep 2
+          done
+
+      - name: Run integration tests
+        run: |
+          node test/integration/standardOutputs.js
+          echo ""
+          node test/integration/miniscript.js
+          echo ""
+          node test/integration/sortedmulti.js
+
+      - name: Run deprecated integration tests
+        run: |
+          node test/integration/standardOutputs-deprecated.js
+          echo ""
+          node test/integration/miniscript-deprecated.js
+
+      - name: Stop regtest environment
+        if: always()
+        run: docker rm -f bitcoinerlab_tester || true
