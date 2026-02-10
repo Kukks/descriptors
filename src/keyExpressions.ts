@@ -1,11 +1,11 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network } from './compat';
-import type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface } from './types';
-import type { KeyInfo } from './types';
+import { networks, Network } from './compat.js';
+import type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface } from './types.js';
+import type { KeyInfo } from './types.js';
 
-import * as RE from './re';
+import * as RE from './re.js';
 
 const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {

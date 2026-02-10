@@ -6,10 +6,10 @@
 // @ts-nocheck
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 
-import { DescriptorsFactory } from '../dist';
-import { fixtures as customFixtures } from './fixtures/custom';
-import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
-import { ECPair, BIP32 } from './helpers/crypto';
+import { DescriptorsFactory } from '../dist/index.js';
+import { fixtures as customFixtures } from './fixtures/custom.js';
+import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore.js';
+import { ECPair, BIP32 } from './helpers/crypto.js';
 const { Descriptor, expand } = DescriptorsFactory({ ECPair, BIP32 });
 
 function partialDeepEqual(obj) {

@@ -1,14 +1,14 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network, hash160, fromASM, numberEncodeAsm } from './compat';
-import type { ECPairAPI } from './types';
-import type { BIP32API } from './types';
-import { parseKeyExpression } from './keyExpressions';
-import * as RE from './re';
-import type { PartialSig } from './types';
+import { networks, Network, hash160, fromASM, numberEncodeAsm } from './compat.js';
+import type { ECPairAPI } from './types.js';
+import type { BIP32API } from './types.js';
+import { parseKeyExpression } from './keyExpressions.js';
+import * as RE from './re.js';
+import type { PartialSig } from './types.js';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
-import type { Preimage, TimeConstraints, ExpansionMap } from './types';
+import type { Preimage, TimeConstraints, ExpansionMap } from './types.js';
 
 /**
  * Expand a miniscript to a generalized form using variables instead of key
@@ -239,4 +239,4 @@ export function satisfyMiniscript({
 }
 
 // Re-export numberEncodeAsm from compat for backward compatibility
-export { numberEncodeAsm } from './compat';
+export { numberEncodeAsm } from './compat.js';

@@ -1,9 +1,9 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { isTaprootInput, tapTweakHash } from './compat';
-import type { PsbtLike } from './psbt';
-import type { ECPairInterface, BIP32Interface } from './types';
+import { isTaprootInput, tapTweakHash } from './compat.js';
+import type { PsbtLike } from './psbt.js';
+import type { ECPairInterface, BIP32Interface } from './types.js';
 
 function range(n: number): number[] {
   return [...Array(n).keys()];

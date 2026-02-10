@@ -2,17 +2,17 @@
 // Distributed under the MIT software license
 
 import * as btc from '@scure/btc-signer';
-import { RawTx, RawOldTx } from '@scure/btc-signer/script';
-import { sha256 } from '@noble/hashes/sha256';
+import { RawTx, RawOldTx } from '@scure/btc-signer/script.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { hex } from '@scure/base';
-import type { KeyInfo, PartialSig } from './types';
+import type { KeyInfo, PartialSig } from './types.js';
 import {
   Network,
   toPayment,
   toBtcSignerNetwork,
   varintEncodingLength,
   varintEncode
-} from './compat';
+} from './compat.js';
 
 // Local type definitions replacing bip174 types
 interface Bip32Derivation {
@@ -63,7 +63,7 @@ type FinalScriptsFunc = (
 // or we define a minimal interface for what we need.
 interface PsbtLike {
   addInput(input: PsbtInputExtended): void;
-  addOutput(output: { script: Buffer; value: number }): void;
+  addOutput(output: { script: Buffer; value: number | bigint }): void;
   setLocktime(locktime: number): void;
   locktime: number;
   data: { inputs: PsbtInput[] };

@@ -8,11 +8,11 @@
 // test/tools
 
 import { Psbt } from 'bitcoinjs-lib';
-import { ECPair, BIP32 } from './helpers/crypto';
-import { DescriptorsFactory, OutputInstance } from '../dist';
-import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
-import type { PartialSig } from '../src/types';
-import { varintEncodingLength } from '../src/compat';
+import { ECPair, BIP32 } from './helpers/crypto.js';
+import { DescriptorsFactory, OutputInstance } from '../dist/index.js';
+import fixturesVsize from './fixtures/vsize.json' with { type: 'json' }; // Fixture from @bitcoinerlab/coinselect
+import type { PartialSig } from '../src/types.js';
+import { varintEncodingLength } from '../src/compat.js';
 const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 
 const isSegwitTx = (inputs: Array<OutputInstance>) =>

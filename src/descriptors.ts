@@ -3,8 +3,8 @@
 
 import memoize from 'lodash.memoize';
 import * as btc from '@scure/btc-signer';
-import { secp256k1 } from '@noble/curves/secp256k1';
-import { schnorr } from '@noble/curves/secp256k1';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { schnorr } from '@noble/curves/secp256k1.js';
 
 import {
   networks,
@@ -18,8 +18,8 @@ import {
   decompileScript,
   hash160,
   OP
-} from './compat';
-import { sha256 } from '@noble/hashes/sha256';
+} from './compat.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import type {
   ECPairAPI,
   BIP32API,
@@ -29,19 +29,19 @@ import type {
   Expansion,
   ExpansionMap,
   ParseKeyExpression
-} from './types';
+} from './types.js';
 
-import { finalScriptsFuncFactory, updatePsbt } from './psbt';
-import type { PsbtLike } from './psbt';
-import { DescriptorChecksum } from './checksum';
+import { finalScriptsFuncFactory, updatePsbt } from './psbt.js';
+import type { PsbtLike } from './psbt.js';
+import { DescriptorChecksum } from './checksum.js';
 
-import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
-import * as RE from './re';
+import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions.js';
+import * as RE from './re.js';
 import {
   expandMiniscript as globalExpandMiniscript,
   miniscript2Script,
   satisfyMiniscript
-} from './miniscript';
+} from './miniscript.js';
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -258,11 +258,12 @@ export function DescriptorsFactory({
       //x-only - Schnorr
       return schnorr.verify(signature, msghash, pubkey);
     } else {
-      // ECDSA
+      // ECDSA — PSBT signatures are DER-encoded
       return secp256k1.verify(
         signature,
         msghash,
-        pubkey
+        pubkey,
+        { format: 'der' }
       );
     }
   };
@@ -1245,7 +1246,13 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       return finalizer;
     }
 
-    updatePsbtAsOutput({ psbt, value }: { psbt: PsbtLike; value: number }) {
+    updatePsbtAsOutput({
+      psbt,
+      value
+    }: {
+      psbt: PsbtLike;
+      value: number | bigint;
+    }) {
       psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 

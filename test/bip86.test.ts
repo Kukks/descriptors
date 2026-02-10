@@ -4,9 +4,9 @@
 // BIP86: Taproot BIP32 Derivation Path and Extended Key Version
 // https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki
 
-import { DescriptorsFactory, scriptExpressions } from '../dist/';
+import { DescriptorsFactory, scriptExpressions } from '../dist/index.js';
 import { mnemonicToSeedSync } from 'bip39';
-import { ECPair, BIP32 } from './helpers/crypto';
+import { ECPair, BIP32 } from './helpers/crypto.js';
 const { trBIP32 } = scriptExpressions;
 const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 const network = {

@@ -16,8 +16,8 @@ const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
-import { ECPair, BIP32, networks } from '../helpers/crypto';
-import { addressToOutputScript } from '../../src/compat';
+import { ECPair, BIP32, networks } from '../helpers/crypto.js';
+import { addressToOutputScript } from '../../src/compat.js';
 const BLOCKS = 5;
 const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
@@ -33,7 +33,7 @@ console.log(
   `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
 );
 
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/index.js';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 

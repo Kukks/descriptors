@@ -1,6 +1,6 @@
-import { networks, Network } from './compat';
-import { keyExpressionBIP32 } from './keyExpressions';
-import type { BIP32Interface } from './types';
+import { networks, Network } from './compat.js';
+import { keyExpressionBIP32 } from './keyExpressions.js';
+import type { BIP32Interface } from './types.js';
 
 function assertStandardKeyPath(keyPath: string) {
   // Regular expression to match "/change/index" or "/change/*" format

@@ -19,6 +19,7 @@
   "bugs": {
     "url": "https://github.com/bitcoinerlab/descriptors/issues"
   },
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
@@ -26,20 +27,22 @@
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
-    "preset": "@bitcoinerlab/configs"
+    "preset": "@bitcoinerlab/configs",
+    "extensionsToTreatAsEsm": [],
+    "transform": {}
   },
   "scripts": {
     "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
     "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
-    "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
+    "build:src": "tsc --project tsconfig.src.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
-    "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",
+    "build:test": "npm run build:fixtures && tsc --project tsconfig.test.json --resolveJsonModule",
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js",
     "test:integration:deprecated": "npm run ensureTester && node test/integration/standardOutputs-deprecated.js && echo \"\n\n\" && node test/integration/miniscript-deprecated.js",
-    "test:unit": "jest",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
     "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:deprecated"
   },
@@ -62,11 +65,11 @@
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^1.4.3",
-    "@noble/curves": "^1.9.7",
-    "@noble/hashes": "^1.8.0",
-    "@scure/base": "^1.2.6",
-    "@scure/bip32": "^1.7.0",
-    "@scure/btc-signer": "^1.8.1",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/btc-signer": "^2.0.1",
     "lodash.memoize": "^4.1.2"
   }
 }

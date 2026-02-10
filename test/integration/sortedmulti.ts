@@ -13,8 +13,8 @@ import { Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 
-import { ECPair, BIP32, networks } from '../helpers/crypto';
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { ECPair, BIP32, networks } from '../helpers/crypto.js';
+import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/index.js';
 
 const regtestUtils = new RegtestUtils();
 const NETWORK = networks.regtest;

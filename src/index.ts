@@ -1,18 +1,18 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-export type { KeyInfo, Expansion } from './types';
-import type { PsbtLike } from './psbt';
-import type { OutputInstance } from './descriptors';
-export type { DescriptorInstance, OutputInstance } from './descriptors';
+export type { KeyInfo, Expansion } from './types.js';
+import type { PsbtLike } from './psbt.js';
+import type { OutputInstance } from './descriptors.js';
+export type { DescriptorInstance, OutputInstance } from './descriptors.js';
 export {
   DescriptorsFactory,
   DescriptorConstructor,
   OutputConstructor
-} from './descriptors';
-export { DescriptorChecksum as checksum } from './checksum';
+} from './descriptors.js';
+export { DescriptorChecksum as checksum } from './checksum.js';
 
-import * as signers from './signers';
+import * as signers from './signers.js';
 export { signers };
 
 /**
@@ -47,8 +47,8 @@ function finalizePsbt({
 
 export { finalizePsbt };
 
-export { keyExpressionBIP32 } from './keyExpressions';
-import * as scriptExpressions from './scriptExpressions';
+export { keyExpressionBIP32 } from './keyExpressions.js';
+import * as scriptExpressions from './scriptExpressions.js';
 export { scriptExpressions };
 
-export type { PsbtLike } from './psbt';
+export type { PsbtLike } from './psbt.js';

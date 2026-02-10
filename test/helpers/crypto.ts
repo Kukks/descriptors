@@ -5,17 +5,17 @@
 // @noble/curves, @scure/bip32, @noble/hashes, and @scure/base.
 // These conform to the interfaces defined in ../../src/types.ts.
 
-import { secp256k1 } from '@noble/curves/secp256k1';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { HDKey } from '@scure/bip32';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { base58check } from '@scure/base';
 import type {
   ECPairInterface,
   ECPairAPI,
   BIP32Interface,
   BIP32API
-} from '../../src/types';
-import { networks, type Network } from '../../src/compat';
+} from '../../src/types.js';
+import { networks, type Network } from '../../src/compat.js';
 
 export { networks };
 
@@ -103,8 +103,8 @@ function createECPair(
     pubKey = Buffer.from(rawPub);
   } else if (pubKeyInput) {
     // Normalise to the requested compression
-    const point = secp256k1.ProjectivePoint.fromHex(pubKeyInput);
-    pubKey = Buffer.from(point.toRawBytes(compressed));
+    const point = secp256k1.Point.fromHex(pubKeyInput.toString('hex'));
+    pubKey = Buffer.from(point.toBytes(compressed));
   } else {
     throw new Error('Either privateKey or publicKey must be provided');
   }
@@ -118,8 +118,8 @@ function createECPair(
 
     sign(hash: Buffer): Buffer {
       if (!privKey) throw new Error('Missing private key');
-      const sig = secp256k1.sign(hash, privKey);
-      return Buffer.from(sig.toCompactRawBytes());
+      // v2: sign() returns compact Uint8Array directly
+      return Buffer.from(secp256k1.sign(hash, privKey));
     },
 
     verify(hash: Buffer, signature: Buffer): boolean {
@@ -133,7 +133,7 @@ function createECPair(
 
     tweak(t: Buffer): ECPairInterface {
       const tweakBigint = BigInt('0x' + t.toString('hex'));
-      const n = secp256k1.CURVE.n;
+      const n = secp256k1.Point.CURVE().n;
 
       if (privKey) {
         const privBigint = BigInt('0x' + privKey.toString('hex'));
@@ -145,13 +145,13 @@ function createECPair(
         return createECPair(newPrivKey, undefined, compressed, network);
       } else {
         // Public-key-only tweak: P' = P + t*G
-        const G = secp256k1.ProjectivePoint.BASE;
+        const G = secp256k1.Point.BASE;
         const tweakPoint = G.multiply(tweakBigint);
-        const pubPoint = secp256k1.ProjectivePoint.fromHex(pubKey);
+        const pubPoint = secp256k1.Point.fromHex(pubKey.toString('hex'));
         const tweakedPoint = pubPoint.add(tweakPoint);
         return createECPair(
           undefined,
-          Buffer.from(tweakedPoint.toRawBytes(compressed)),
+          Buffer.from(tweakedPoint.toBytes(compressed)),
           compressed,
           network
         );
@@ -193,7 +193,7 @@ export const ECPair: ECPairAPI = {
     network?: Network;
     compressed?: boolean;
   }): ECPairInterface {
-    const privKey = Buffer.from(secp256k1.utils.randomPrivateKey());
+    const privKey = Buffer.from(secp256k1.utils.randomSecretKey());
     const compressed = options?.compressed !== false;
     const network = options?.network ?? DEFAULT_NETWORK;
     return createECPair(privKey, undefined, compressed, network);
@@ -201,7 +201,7 @@ export const ECPair: ECPairAPI = {
 
   isPoint(p: Buffer | Uint8Array): boolean {
     try {
-      secp256k1.ProjectivePoint.fromHex(p);
+      secp256k1.Point.fromHex(Buffer.from(p).toString('hex'));
       return true;
     } catch {
       return false;

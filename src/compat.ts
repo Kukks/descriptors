@@ -16,9 +16,9 @@ import {
   tapTweak as _tapTweak,
   taprootTweakPubkey as _taprootTweakPubkey,
   taprootTweakPrivKey as _taprootTweakPrivKey
-} from '@scure/btc-signer/utils';
-import { sha256 } from '@noble/hashes/sha256';
-import { ripemd160 } from '@noble/hashes/ripemd160';
+} from '@scure/btc-signer/utils.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { ripemd160 } from '@noble/hashes/legacy.js';
 
 // ---- Network ----
 

@@ -13,7 +13,7 @@ import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
-import { ECPair, BIP32, networks } from '../helpers/crypto';
+import { ECPair, BIP32, networks } from '../helpers/crypto.js';
 const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
@@ -27,7 +27,7 @@ import {
   scriptExpressions,
   keyExpressionBIP32,
   signers
-} from '../../dist/';
+} from '../../dist/index.js';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
