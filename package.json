@@ -35,7 +35,7 @@
     "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
     "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
     "build:src": "tsc --project tsconfig.src.json",
-    "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
+    "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.cjs -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project tsconfig.test.json --resolveJsonModule",
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
