@@ -258,11 +258,12 @@ export function DescriptorsFactory({
       //x-only - Schnorr
       return schnorr.verify(signature, msghash, pubkey);
     } else {
-      // ECDSA — bitcoinjs-lib v7 decodes DER to compact r||s (64 bytes)
+      // ECDSA — msghash is already a sighash digest, so prehash must be false.
+      // bitcoinjs-lib v7 decodes DER to compact r||s (64 bytes).
       if (signature.length === 64) {
-        return secp256k1.verify(signature, msghash, pubkey);
+        return secp256k1.verify(signature, msghash, pubkey, { prehash: false });
       }
-      return secp256k1.verify(signature, msghash, pubkey, { format: 'der' });
+      return secp256k1.verify(signature, msghash, pubkey, { prehash: false, format: 'der' });
     }
   };
 
