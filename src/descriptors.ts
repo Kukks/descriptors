@@ -1253,7 +1253,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: PsbtLike;
       value: number | bigint;
     }) {
-      psbt.addOutput({ script: this.getScriptPubKey(), value });
+      psbt.addOutput({ script: this.getScriptPubKey(), value: typeof value === 'bigint' ? value : BigInt(value) });
     }
 
     #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
