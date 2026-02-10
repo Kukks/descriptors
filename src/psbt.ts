@@ -6,10 +6,9 @@ import { bip32Path } from '@scure/btc-signer';
 import { RawTx, RawOldTx } from '@scure/btc-signer/script.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hex } from '@scure/base';
+import { equalBytes } from '@scure/btc-signer/utils.js';
 import type { KeyInfo } from './types.js';
-import {
-  decompileScript
-} from './compat.js';
+import { decompileScript, readUInt32BE } from './scriptUtils.js';
 
 // PsbtLike is now an alias for @scure/btc-signer's Transaction class.
 // The Transaction class handles PSBT natively: addInput/Output, sign, finalize, extract.
@@ -26,11 +25,11 @@ type PsbtLike = InstanceType<typeof btc.Transaction>;
  * @returns Object with finalScriptSig and finalScriptWitness (as Uint8Array[])
  */
 export function computeFinalScripts(
-  scriptSatisfaction: Buffer,
-  lockingScript: Buffer,
+  scriptSatisfaction: Uint8Array,
+  lockingScript: Uint8Array,
   isSegwit: boolean,
   isP2SH: boolean,
-  redeemScript?: Buffer
+  redeemScript?: Uint8Array
 ): {
   finalScriptSig: Uint8Array | undefined;
   finalScriptWitness: Uint8Array[] | undefined;
@@ -46,24 +45,24 @@ export function computeFinalScripts(
     return chunks.map(chunk =>
       typeof chunk === 'number'
         ? new Uint8Array(0) // OP_0 or opcodes become empty push
-        : new Uint8Array(chunk)
+        : chunk
     );
   }
 
   //p2wsh: witness = [satisfaction chunks..., witnessScript]
   if (isSegwit && !isP2SH) {
     const witness = satisfactionToWitness();
-    witness.push(new Uint8Array(lockingScript));
+    witness.push(lockingScript);
     finalScriptWitness = witness;
   }
   //p2sh-p2wsh: witness = [satisfaction chunks..., witnessScript], scriptSig = push of redeemScript
   else if (isSegwit && isP2SH) {
     const witness = satisfactionToWitness();
-    witness.push(new Uint8Array(lockingScript));
+    witness.push(lockingScript);
     finalScriptWitness = witness;
     // finalScriptSig is a serialized script that pushes the redeemScript
     const rs = redeemScript ?? lockingScript;
-    finalScriptSig = btc.Script.encode([new Uint8Array(rs)]);
+    finalScriptSig = btc.Script.encode([rs]);
   }
   //p2sh: scriptSig = satisfaction + push of redeemScript
   else {
@@ -74,9 +73,9 @@ export function computeFinalScripts(
     const scriptItems: (number | Uint8Array)[] = chunks.map(chunk =>
       typeof chunk === 'number'
         ? chunk
-        : new Uint8Array(chunk)
+        : chunk
     );
-    scriptItems.push(new Uint8Array(lockingScript));
+    scriptItems.push(lockingScript);
     finalScriptSig = btc.Script.encode(scriptItems);
   }
 
@@ -110,12 +109,12 @@ export function updatePsbt({
   sequence: number | undefined;
   locktime: number | undefined;
   keysInfo: KeyInfo[];
-  scriptPubKey: Buffer;
+  scriptPubKey: Uint8Array;
   isSegwit: boolean;
   /** for taproot **/
-  tapInternalKey?: Buffer | undefined;
-  witnessScript: Buffer | undefined;
-  redeemScript: Buffer | undefined;
+  tapInternalKey?: Uint8Array | undefined;
+  witnessScript: Uint8Array | undefined;
+  redeemScript: Uint8Array | undefined;
   rbf: boolean;
 }): number {
   //Some data-sanity checks:
@@ -136,14 +135,14 @@ export function updatePsbt({
     const parsed = RawTx.decode(rawTxBytes);
     const out = parsed.outputs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
-    const outputScript = out.script ? Buffer.from(out.script) : undefined;
+    const outputScript = out.script;
     if (!outputScript)
       throw new Error(
         `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
       );
-    if (Buffer.compare(outputScript, scriptPubKey) !== 0)
+    if (!equalBytes(outputScript, scriptPubKey))
       throw new Error(
-        `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
+        `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${hex.encode(scriptPubKey)}`
       );
     // Compute txid: double-SHA256 of non-witness serialization, reversed
     const nonWitnessSerialization = RawOldTx.encode(parsed);
@@ -218,11 +217,11 @@ export function updatePsbt({
         if (!pubkey)
           throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
         return [
-          new Uint8Array(pubkey),
+          pubkey,
           {
             hashes: [] as Uint8Array[], // Empty for tr(KEY) taproot key spend
             der: {
-              fingerprint: keyInfo.masterFingerprint!.readUInt32BE(0),
+              fingerprint: readUInt32BE(keyInfo.masterFingerprint!),
               path: bip32Path(keyInfo.path!)
             }
           }
@@ -231,7 +230,7 @@ export function updatePsbt({
 
     if (tapBip32Derivation.length)
       input['tapBip32Derivation'] = tapBip32Derivation;
-    input['tapInternalKey'] = new Uint8Array(tapInternalKey);
+    input['tapInternalKey'] = tapInternalKey;
 
     //TODO: currently only single-key taproot supported.
     if (tapBip32Derivation.length > 1)
@@ -247,9 +246,9 @@ export function updatePsbt({
         if (!pubkey)
           throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
         return [
-          new Uint8Array(pubkey),
+          pubkey,
           {
-            fingerprint: keyInfo.masterFingerprint!.readUInt32BE(0),
+            fingerprint: readUInt32BE(keyInfo.masterFingerprint!),
             path: bip32Path(keyInfo.path!)
           }
         ] as [Uint8Array, { fingerprint: number; path: number[] }];
@@ -258,12 +257,12 @@ export function updatePsbt({
   }
   if (isSegwit && txHex !== undefined) {
     //There's no need to put both witnessUtxo and nonWitnessUtxo
-    input['witnessUtxo'] = { script: new Uint8Array(scriptPubKey), amount: BigInt(value!) };
+    input['witnessUtxo'] = { script: scriptPubKey, amount: BigInt(value!) };
   }
   if (sequence !== undefined) input['sequence'] = sequence;
 
-  if (witnessScript) input['witnessScript'] = new Uint8Array(witnessScript);
-  if (redeemScript) input['redeemScript'] = new Uint8Array(redeemScript);
+  if (witnessScript) input['witnessScript'] = witnessScript;
+  if (redeemScript) input['redeemScript'] = redeemScript;
 
   psbt.addInput(input as any);
   return psbt.inputsLength - 1;

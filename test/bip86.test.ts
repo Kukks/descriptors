@@ -5,6 +5,7 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki
 
 import { DescriptorsFactory, scriptExpressions } from '../dist/index.js';
+import { hex as hexModule } from '@scure/base';
 import { mnemonicToSeedSync } from 'bip39';
 import { ECPair, BIP32 } from './helpers/crypto.js';
 const { trBIP32 } = scriptExpressions;
@@ -39,9 +40,10 @@ describe('BIP86 Taproot Derivation Path Tests', () => {
 
     const output = new Output({ descriptor, network });
     const address = output.getAddress();
-    const scriptPubKey = output.getScriptPubKey().toString('hex');
-    const internalKey = output.getPayment().internalPubkey?.toString('hex');
-    const pubKey = output.getPayment().pubkey?.toString('hex');
+    const scriptPubKey = hexModule.encode(output.getScriptPubKey());
+    const payment = output.getPayment() as Record<string, unknown>;
+    const internalKey = payment['tapInternalKey'] ? hexModule.encode(payment['tapInternalKey'] as Uint8Array) : undefined;
+    const pubKey = payment['tweakedPubkey'] ? hexModule.encode(payment['tweakedPubkey'] as Uint8Array) : undefined;
 
     expect(address).toBe(
       'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr'

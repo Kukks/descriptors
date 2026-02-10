@@ -11,9 +11,9 @@ import { Transaction } from '@scure/btc-signer';
 import { base64, hex as hexModule } from '@scure/base';
 import { ECPair, BIP32 } from './helpers/crypto.js';
 import { DescriptorsFactory, OutputInstance } from '../dist/index.js';
-import fixturesVsize from './fixtures/vsize.json' with { type: 'json' }; // Fixture from @bitcoinerlab/coinselect
+import fixturesVsize from './fixtures/vsize.json' with { type: 'json' };
 import type { PartialSig } from '../src/types.js';
-import { varintEncodingLength } from '../src/compat.js';
+import { varintEncodingLength } from '../src/scriptUtils.js';
 const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 
 const isSegwitTx = (inputs: Array<OutputInstance>) =>
@@ -92,7 +92,7 @@ describe('vsize', () => {
           const signersPubKeys =
             'signersPubKeys' in input &&
             input.signersPubKeys.map((hexString: string) =>
-              Buffer.from(hexString, 'hex')
+              hexModule.decode(hexString)
             );
           return new Output({
             allowMiniscriptInP2SH: true,
@@ -114,8 +114,8 @@ describe('vsize', () => {
         // Deserialize signaturesPerInput
         const signaturesPerInput = fixture.signaturesPerInput.map(signatures =>
           signatures.map(sig => ({
-            pubkey: Buffer.from(sig.pubkey, 'hex'),
-            signature: Buffer.from(sig.signature, 'hex')
+            pubkey: hexModule.decode(sig.pubkey),
+            signature: hexModule.decode(sig.signature)
           }))
         );
 

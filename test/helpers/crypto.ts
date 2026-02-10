@@ -8,14 +8,15 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { HDKey } from '@scure/bip32';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { base58check } from '@scure/base';
+import { base58check, hex } from '@scure/base';
+import { concatBytes } from '@scure/btc-signer/utils.js';
 import type {
   ECPairInterface,
   ECPairAPI,
   BIP32Interface,
   BIP32API
 } from '../../src/types.js';
-import { networks, type Network } from '../../src/compat.js';
+import { networks, type Network } from '../../src/networks.js';
 
 export { networks };
 
@@ -27,10 +28,18 @@ const bs58check = base58check(sha256);
 
 const DEFAULT_NETWORK: Network = networks.bitcoin;
 
-/** Convert a bigint to a 32-byte big-endian Buffer. */
-function bigintTo32Bytes(n: bigint): Buffer {
+/** Convert a bigint to a 32-byte big-endian Uint8Array. */
+function bigintTo32Bytes(n: bigint): Uint8Array {
   const hexStr = n.toString(16).padStart(64, '0');
-  return Buffer.from(hexStr, 'hex');
+  return hex.decode(hexStr);
+}
+
+/** Write a 32-bit unsigned integer in big-endian format into buf at offset. */
+function writeUInt32BE(buf: Uint8Array, value: number, offset: number): void {
+  buf[offset] = (value >>> 24) & 0xff;
+  buf[offset + 1] = (value >>> 16) & 0xff;
+  buf[offset + 2] = (value >>> 8) & 0xff;
+  buf[offset + 3] = value & 0xff;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,22 +47,22 @@ function bigintTo32Bytes(n: bigint): Buffer {
 // ---------------------------------------------------------------------------
 
 function encodeWIF(
-  privateKey: Buffer,
+  privateKey: Uint8Array,
   compressed: boolean,
   network: Network
 ): string {
-  const prefix = Buffer.alloc(1, network.wif);
+  const prefix = Uint8Array.from([network.wif]);
   const payload = compressed
-    ? Buffer.concat([prefix, privateKey, Buffer.from([0x01])])
-    : Buffer.concat([prefix, privateKey]);
+    ? concatBytes(prefix, privateKey, Uint8Array.from([0x01]))
+    : concatBytes(prefix, privateKey);
   return bs58check.encode(payload);
 }
 
 function decodeWIF(
   wif: string,
   network?: Network | Network[]
-): { privateKey: Buffer; compressed: boolean; network: Network } {
-  const decoded = Buffer.from(bs58check.decode(wif));
+): { privateKey: Uint8Array; compressed: boolean; network: Network } {
+  const decoded = bs58check.decode(wif);
   const version = decoded[0]!;
 
   // Determine matching network(s)
@@ -71,13 +80,13 @@ function decodeWIF(
   // Determine if compressed
   if (decoded.length === 34 && decoded[33] === 0x01) {
     return {
-      privateKey: decoded.subarray(1, 33) as Buffer,
+      privateKey: decoded.subarray(1, 33),
       compressed: true,
       network: matchedNetwork
     };
   } else if (decoded.length === 33) {
     return {
-      privateKey: decoded.subarray(1, 33) as Buffer,
+      privateKey: decoded.subarray(1, 33),
       compressed: false,
       network: matchedNetwork
     };
@@ -91,20 +100,19 @@ function decodeWIF(
 // ---------------------------------------------------------------------------
 
 function createECPair(
-  privKey: Buffer | undefined,
-  pubKeyInput: Buffer | undefined,
+  privKey: Uint8Array | undefined,
+  pubKeyInput: Uint8Array | undefined,
   compressed: boolean,
   network: Network
 ): ECPairInterface {
-  let pubKey: Buffer;
+  let pubKey: Uint8Array;
 
   if (privKey) {
-    const rawPub = secp256k1.getPublicKey(privKey, compressed);
-    pubKey = Buffer.from(rawPub);
+    pubKey = secp256k1.getPublicKey(privKey, compressed);
   } else if (pubKeyInput) {
     // Normalise to the requested compression
-    const point = secp256k1.Point.fromHex(pubKeyInput.toString('hex'));
-    pubKey = Buffer.from(point.toBytes(compressed));
+    const point = secp256k1.Point.fromHex(hex.encode(pubKeyInput));
+    pubKey = point.toBytes(compressed);
   } else {
     throw new Error('Either privateKey or publicKey must be provided');
   }
@@ -116,13 +124,13 @@ function createECPair(
     compressed,
     network,
 
-    sign(hash: Buffer): Buffer {
+    sign(hash: Uint8Array): Uint8Array {
       if (!privKey) throw new Error('Missing private key');
       // v2: sign() returns compact Uint8Array directly
-      return Buffer.from(secp256k1.sign(hash, privKey));
+      return secp256k1.sign(hash, privKey);
     },
 
-    verify(hash: Buffer, signature: Buffer): boolean {
+    verify(hash: Uint8Array, signature: Uint8Array): boolean {
       return secp256k1.verify(signature, hash, pubKey);
     },
 
@@ -131,12 +139,12 @@ function createECPair(
       return encodeWIF(privKey, compressed, network);
     },
 
-    tweak(t: Buffer): ECPairInterface {
-      const tweakBigint = BigInt('0x' + t.toString('hex'));
+    tweak(t: Uint8Array): ECPairInterface {
+      const tweakBigint = BigInt('0x' + hex.encode(t));
       const n = secp256k1.Point.CURVE().n;
 
       if (privKey) {
-        const privBigint = BigInt('0x' + privKey.toString('hex'));
+        const privBigint = BigInt('0x' + hex.encode(privKey));
         const newPrivBigint = (privBigint + tweakBigint) % n;
         if (newPrivBigint === 0n) {
           throw new Error('Tweaked private key is zero');
@@ -147,11 +155,11 @@ function createECPair(
         // Public-key-only tweak: P' = P + t*G
         const G = secp256k1.Point.BASE;
         const tweakPoint = G.multiply(tweakBigint);
-        const pubPoint = secp256k1.Point.fromHex(pubKey.toString('hex'));
+        const pubPoint = secp256k1.Point.fromHex(hex.encode(pubKey));
         const tweakedPoint = pubPoint.add(tweakPoint);
         return createECPair(
           undefined,
-          Buffer.from(tweakedPoint.toBytes(compressed)),
+          tweakedPoint.toBytes(compressed),
           compressed,
           network
         );
@@ -167,7 +175,7 @@ function createECPair(
 
 export const ECPair: ECPairAPI = {
   fromPublicKey(
-    publicKey: Buffer,
+    publicKey: Uint8Array,
     options?: { network?: Network; compressed?: boolean }
   ): ECPairInterface {
     const compressed = options?.compressed !== false;
@@ -176,7 +184,7 @@ export const ECPair: ECPairAPI = {
   },
 
   fromPrivateKey(
-    privateKey: Buffer,
+    privateKey: Uint8Array,
     options?: { network?: Network; compressed?: boolean }
   ): ECPairInterface {
     const compressed = options?.compressed !== false;
@@ -193,15 +201,15 @@ export const ECPair: ECPairAPI = {
     network?: Network;
     compressed?: boolean;
   }): ECPairInterface {
-    const privKey = Buffer.from(secp256k1.utils.randomSecretKey());
+    const privKey = secp256k1.utils.randomSecretKey();
     const compressed = options?.compressed !== false;
     const network = options?.network ?? DEFAULT_NETWORK;
     return createECPair(privKey, undefined, compressed, network);
   },
 
-  isPoint(p: Buffer | Uint8Array): boolean {
+  isPoint(p: Uint8Array): boolean {
     try {
-      secp256k1.Point.fromHex(Buffer.from(p).toString('hex'));
+      secp256k1.Point.fromHex(hex.encode(p));
       return true;
     } catch {
       return false;
@@ -226,20 +234,20 @@ function wrapHDKey(hdkey: HDKey, network: Network): BIP32Interface {
   // Build the base object without privateKey, then conditionally add it.
   // This satisfies exactOptionalPropertyTypes.
   const base = {
-    get publicKey(): Buffer {
+    get publicKey(): Uint8Array {
       if (!hdkey.publicKey) throw new Error('Missing public key');
-      return Buffer.from(hdkey.publicKey);
+      return hdkey.publicKey;
     },
 
-    get chainCode(): Buffer {
+    get chainCode(): Uint8Array {
       if (!hdkey.chainCode) throw new Error('Missing chain code');
-      return Buffer.from(hdkey.chainCode);
+      return hdkey.chainCode;
     },
 
-    get fingerprint(): Buffer {
+    get fingerprint(): Uint8Array {
       // HDKey.fingerprint is a number (4-byte big-endian unsigned int)
-      const buf = Buffer.alloc(4);
-      buf.writeUInt32BE(hdkey.fingerprint >>> 0, 0);
+      const buf = new Uint8Array(4);
+      writeUInt32BE(buf, hdkey.fingerprint >>> 0, 0);
       return buf;
     },
 
@@ -287,12 +295,12 @@ function wrapHDKey(hdkey: HDKey, network: Network): BIP32Interface {
       return hdkey.publicExtendedKey;
     },
 
-    sign(hash: Buffer): Buffer {
+    sign(hash: Uint8Array): Uint8Array {
       if (!hdkey.privateKey) throw new Error('Missing private key');
-      return Buffer.from(hdkey.sign(hash));
+      return hdkey.sign(hash);
     },
 
-    verify(hash: Buffer, signature: Buffer): boolean {
+    verify(hash: Uint8Array, signature: Uint8Array): boolean {
       return hdkey.verify(hash, signature);
     },
 
@@ -304,14 +312,14 @@ function wrapHDKey(hdkey: HDKey, network: Network): BIP32Interface {
       if (!hdkey.privateKey) {
         throw new Error('Missing private key');
       }
-      return encodeWIF(Buffer.from(hdkey.privateKey), true, network);
+      return encodeWIF(hdkey.privateKey, true, network);
     }
   };
 
   if (hdkey.privateKey) {
     return Object.defineProperty(base, 'privateKey', {
-      get(): Buffer {
-        return Buffer.from(hdkey.privateKey!);
+      get(): Uint8Array {
+        return hdkey.privateKey!;
       },
       enumerable: true,
       configurable: true
@@ -330,8 +338,8 @@ export const BIP32: BIP32API = {
   },
 
   fromPublicKey(
-    publicKey: Buffer,
-    chainCode: Buffer,
+    publicKey: Uint8Array,
+    chainCode: Uint8Array,
     network?: Network
   ): BIP32Interface {
     const net = network ?? DEFAULT_NETWORK;
@@ -341,13 +349,13 @@ export const BIP32: BIP32API = {
     // xpub format (78 bytes):
     //   version (4) + depth (1) + parentFingerprint (4) + index (4) +
     //   chainCode (32) + publicKey (33)
-    const buf = Buffer.alloc(78);
-    buf.writeUInt32BE(versions.public, 0); // version
+    const buf = new Uint8Array(78);
+    writeUInt32BE(buf, versions.public, 0); // version
     buf[4] = 0; // depth
-    buf.writeUInt32BE(0, 5); // parent fingerprint
-    buf.writeUInt32BE(0, 9); // index
-    chainCode.copy(buf, 13);
-    publicKey.copy(buf, 45);
+    writeUInt32BE(buf, 0, 5); // parent fingerprint
+    writeUInt32BE(buf, 0, 9); // index
+    buf.set(chainCode, 13);
+    buf.set(publicKey, 45);
 
     const xpub = bs58check.encode(buf);
     const hdkey = HDKey.fromExtendedKey(xpub, versions);
@@ -355,8 +363,8 @@ export const BIP32: BIP32API = {
   },
 
   fromPrivateKey(
-    privateKey: Buffer,
-    chainCode: Buffer,
+    privateKey: Uint8Array,
+    chainCode: Uint8Array,
     network?: Network
   ): BIP32Interface {
     const net = network ?? DEFAULT_NETWORK;
@@ -365,21 +373,21 @@ export const BIP32: BIP32API = {
     // xprv format (78 bytes):
     //   version (4) + depth (1) + parentFingerprint (4) + index (4) +
     //   chainCode (32) + 0x00 (1) + privateKey (32)
-    const buf = Buffer.alloc(78);
-    buf.writeUInt32BE(versions.private, 0); // version
+    const buf = new Uint8Array(78);
+    writeUInt32BE(buf, versions.private, 0); // version
     buf[4] = 0; // depth
-    buf.writeUInt32BE(0, 5); // parent fingerprint
-    buf.writeUInt32BE(0, 9); // index
-    chainCode.copy(buf, 13);
+    writeUInt32BE(buf, 0, 5); // parent fingerprint
+    writeUInt32BE(buf, 0, 9); // index
+    buf.set(chainCode, 13);
     buf[45] = 0x00; // padding byte before private key
-    privateKey.copy(buf, 46);
+    buf.set(privateKey, 46);
 
     const xprv = bs58check.encode(buf);
     const hdkey = HDKey.fromExtendedKey(xprv, versions);
     return wrapHDKey(hdkey, net);
   },
 
-  fromSeed(seed: Buffer, network?: Network): BIP32Interface {
+  fromSeed(seed: Uint8Array, network?: Network): BIP32Interface {
     const net = network ?? DEFAULT_NETWORK;
     const versions = networkToVersions(net);
     const hdkey = HDKey.fromMasterSeed(seed, versions);

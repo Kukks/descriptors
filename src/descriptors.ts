@@ -3,20 +3,17 @@
 
 import memoize from 'lodash.memoize';
 import * as btc from '@scure/btc-signer';
+import type { P2Ret } from '@scure/btc-signer/payment.js';
 
+import { networks, Network, toBtcSignerNetwork } from './networks.js';
+import { varintEncodingLength, decompileScript } from './scriptUtils.js';
 import {
-  networks,
-  Network,
-  Payment,
-  toPayment,
-  toBtcSignerNetwork,
-  addressToOutputScript,
-  getOutputScriptType,
-  varintEncodingLength,
-  decompileScript,
   hash160,
-  OP
-} from './compat.js';
+  compareBytes,
+  equalBytes,
+  concatBytes
+} from '@scure/btc-signer/utils.js';
+import { hex } from '@scure/base';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type {
   ECPairAPI,
@@ -47,15 +44,15 @@ const MAX_SCRIPT_ELEMENT_SIZE = 520;
 const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
 const MAX_OPS_PER_SCRIPT = 201;
 
-function countNonPushOnlyOPs(script: Buffer): number {
+function countNonPushOnlyOPs(script: Uint8Array): number {
   const decompiled = decompileScript(script);
   if (!decompiled) throw new Error(`Error: cound not decompile ${script}`);
   return decompiled.filter(
-    op => typeof op === 'number' && op > OP.OP_16
+    op => typeof op === 'number' && op > btc.OP.OP_16
   ).length;
 }
 
-function vectorSize(someVector: Buffer[]): number {
+function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
 
   return (
@@ -66,7 +63,7 @@ function vectorSize(someVector: Buffer[]): number {
   );
 }
 
-function varSliceSize(someScript: Buffer): number {
+function varSliceSize(someScript: Uint8Array): number {
   const length = someScript.length;
 
   return varintEncodingLength(length) + length;
@@ -79,28 +76,25 @@ function varSliceSize(someScript: Buffer): number {
 function safeP2wsh(
   innerScript: Uint8Array,
   net?: ReturnType<typeof toBtcSignerNetwork>
-): Payment {
+): P2Ret {
   try {
-    return toPayment(
-      btc.p2wsh(
-        { type: 'unknown' as const, script: innerScript },
-        net
-      ) as Record<string, unknown>
+    return btc.p2wsh(
+      { type: 'unknown' as const, script: innerScript },
+      net
     );
   } catch {
     // Manual computation: OP_0 <SHA256(script)>
     const scriptHash = sha256(innerScript);
-    const outputScript = Buffer.from(
-      btc.OutScript.encode({ type: 'wsh', hash: scriptHash })
-    );
+    const outputScript = btc.OutScript.encode({ type: 'wsh', hash: scriptHash });
     const address = net
       ? btc.Address(net).encode({ type: 'wsh', hash: scriptHash })
       : undefined;
     return {
+      type: 'wsh',
       script: outputScript,
-      witnessScript: Buffer.from(innerScript),
+      witnessScript: innerScript,
       ...(address ? { address } : {})
-    };
+    } as P2Ret;
   }
 }
 
@@ -111,28 +105,25 @@ function safeP2wsh(
 function safeP2sh(
   innerScript: Uint8Array,
   net?: ReturnType<typeof toBtcSignerNetwork>
-): Payment {
+): P2Ret {
   try {
-    return toPayment(
-      btc.p2sh(
-        { type: 'unknown' as const, script: innerScript },
-        net
-      ) as Record<string, unknown>
+    return btc.p2sh(
+      { type: 'unknown' as const, script: innerScript },
+      net
     );
   } catch {
     // Manual computation: OP_HASH160 <HASH160(script)> OP_EQUAL
     const scriptHash = hash160(innerScript);
-    const outputScript = Buffer.from(
-      btc.OutScript.encode({ type: 'sh', hash: scriptHash })
-    );
+    const outputScript = btc.OutScript.encode({ type: 'sh', hash: scriptHash });
     const address = net
       ? btc.Address(net).encode({ type: 'sh', hash: scriptHash })
       : undefined;
     return {
+      type: 'sh',
       script: outputScript,
-      redeemScript: Buffer.from(innerScript),
+      redeemScript: innerScript,
       ...(address ? { address } : {})
-    };
+    } as P2Ret;
   }
 }
 
@@ -290,9 +281,9 @@ export function DescriptorsFactory({
     let isSegwit: boolean | undefined;
     let isTaproot: boolean | undefined;
     let expandedMiniscript: string | undefined;
-    let payment: Payment | undefined;
-    let witnessScript: Buffer | undefined;
-    let redeemScript: Buffer | undefined;
+    let payment: P2Ret | undefined;
+    let witnessScript: Uint8Array | undefined;
+    let redeemScript: Uint8Array | undefined;
     const isRanged = descriptor.indexOf('*') !== -1;
     const net = toBtcSignerNetwork(network);
 
@@ -313,25 +304,29 @@ export function DescriptorsFactory({
       const matchedAddress = canonicalExpression.match(RE.reAddrAnchored)?.[1];
       if (!matchedAddress)
         throw new Error(`Error: could not get an address in ${descriptor}`);
-      let output: Buffer;
+      let output: Uint8Array;
       try {
-        output = addressToOutputScript(matchedAddress, network);
+        const decoded = btc.Address(toBtcSignerNetwork(network)).decode(matchedAddress);
+        output = btc.OutScript.encode(decoded);
       } catch (e) {
         void e;
         throw new Error(`Error: invalid address ${matchedAddress}`);
       }
       // Detect output type using OutScript.decode
-      const decoded = getOutputScriptType(output);
-      if (!decoded) {
+      let scriptType: string;
+      try {
+        const decoded = btc.OutScript.decode(output);
+        scriptType = decoded.type;
+      } catch {
         throw new Error(`Error: invalid address ${matchedAddress}`);
       }
-      const scriptType = decoded.type;
-      // For addr() we already have the output script from addressToOutputScript.
-      // We build a minimal Payment with the script and address.
+      // For addr() we already have the output script.
+      // We build a minimal P2Ret with the script and address.
       payment = {
+        type: scriptType,
         address: matchedAddress,
         script: output
-      };
+      } as P2Ret;
       if (scriptType === 'pkh') {
         isSegwit = false;
         isTaproot = false;
@@ -371,7 +366,7 @@ export function DescriptorsFactory({
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = toPayment(btc.p2pk(pubkey, net) as Record<string, unknown>);
+        payment = btc.p2pk(pubkey, net) as P2Ret;
       }
     }
     //pkh(KEY) - legacy
@@ -394,7 +389,7 @@ export function DescriptorsFactory({
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = toPayment(btc.p2pkh(pubkey, net) as Record<string, unknown>);
+        payment = btc.p2pkh(pubkey, net);
       }
     }
     //sh(wpkh(KEY)) - nested segwit
@@ -416,13 +411,8 @@ export function DescriptorsFactory({
             `Error: could not extract a pubkey from ${descriptor}`
           );
         const wpkhPayment = btc.p2wpkh(pubkey, net);
-        payment = toPayment(btc.p2sh(wpkhPayment, net) as Record<string, unknown>);
-        redeemScript = payment.redeem?.script ?? (payment.redeemScript ? payment.redeemScript : undefined);
-        if (!redeemScript) {
-          // Construct redeemScript from wpkh output
-          const wpkhP = toPayment(wpkhPayment as Record<string, unknown>);
-          redeemScript = wpkhP.script;
-        }
+        payment = btc.p2sh(wpkhPayment, net);
+        redeemScript = payment.redeemScript ?? wpkhPayment.script;
         if (!redeemScript)
           throw new Error(
             `Error: could not calculate redeemScript for ${descriptor}`
@@ -447,7 +437,7 @@ export function DescriptorsFactory({
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = toPayment(btc.p2wpkh(pubkey, net) as Record<string, unknown>);
+        payment = btc.p2wpkh(pubkey, net);
       }
     }
     // sortedmulti script expressions
@@ -480,12 +470,12 @@ export function DescriptorsFactory({
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compareBytes(a, b));
 
         const redeem = btc.p2ms(m, pubkeys, undefined);
-        redeemScript = Buffer.from(redeem.script);
+        redeemScript = redeem.script;
 
-        payment = toPayment(btc.p2sh(redeem, net) as Record<string, unknown>);
+        payment = btc.p2sh(redeem, net);
       }
     }
     // wsh(sortedmulti())
@@ -517,12 +507,12 @@ export function DescriptorsFactory({
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compareBytes(a, b));
 
         const redeem = btc.p2ms(m, pubkeys, undefined);
-        witnessScript = Buffer.from(redeem.script);
+        witnessScript = redeem.script;
 
-        payment = toPayment(btc.p2wsh(redeem, net) as Record<string, unknown>);
+        payment = btc.p2wsh(redeem, net);
       }
     }
     // sh(wsh(sortedmulti()))
@@ -556,15 +546,15 @@ export function DescriptorsFactory({
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compareBytes(a, b));
 
         const redeem = btc.p2ms(m, pubkeys, undefined);
         const wsh = btc.p2wsh(redeem, net);
 
-        witnessScript = Buffer.from(redeem.script);
-        redeemScript = Buffer.from(wsh.script);
+        witnessScript = redeem.script;
+        redeemScript = wsh.script;
 
-        payment = toPayment(btc.p2sh(wsh, net) as Record<string, unknown>);
+        payment = btc.p2sh(wsh, net);
       }
     }
     //sh(wsh(miniscript))
@@ -595,11 +585,8 @@ export function DescriptorsFactory({
             `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
           );
         }
-        const wshPayment = safeP2wsh(Uint8Array.from(script), net);
-        const shPayment = safeP2sh(
-          Uint8Array.from(wshPayment.script!),
-          net
-        );
+        const wshPayment = safeP2wsh(script, net);
+        const shPayment = safeP2sh(wshPayment.script, net);
         payment = shPayment;
         redeemScript = wshPayment.script;
         if (!redeemScript)
@@ -646,7 +633,7 @@ export function DescriptorsFactory({
             `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
           );
         }
-        payment = safeP2sh(Uint8Array.from(script), net);
+        payment = safeP2sh(script, net);
       }
     }
     //wsh(miniscript)
@@ -677,7 +664,7 @@ export function DescriptorsFactory({
             `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
           );
         }
-        payment = safeP2wsh(Uint8Array.from(script), net);
+        payment = safeP2wsh(script, net);
       }
     }
     //tr(KEY) - taproot
@@ -703,7 +690,7 @@ export function DescriptorsFactory({
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = toPayment(btc.p2tr(pubkey, undefined, net) as Record<string, unknown>);
+        payment = btc.p2tr(pubkey, undefined, net);
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
@@ -754,12 +741,12 @@ export function DescriptorsFactory({
    * The `Output` class is the central component for managing descriptors.
    */
   class Output {
-    readonly #payment: Payment;
+    readonly #payment: P2Ret;
     readonly #preimages: Preimage[] = [];
-    readonly #signersPubKeys: Buffer[];
+    readonly #signersPubKeys: Uint8Array[];
     readonly #miniscript?: string;
-    readonly #witnessScript?: Buffer;
-    readonly #redeemScript?: Buffer;
+    readonly #witnessScript?: Uint8Array;
+    readonly #redeemScript?: Uint8Array;
     readonly #isSegwit?: boolean;
     readonly #isTaproot?: boolean;
     readonly #expandedExpression?: string;
@@ -782,7 +769,7 @@ export function DescriptorsFactory({
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
       preimages?: Preimage[];
-      signersPubKeys?: Buffer[];
+      signersPubKeys?: Uint8Array[];
     }) {
       this.#network = network;
       this.#preimages = preimages;
@@ -854,7 +841,7 @@ export function DescriptorsFactory({
           : signatures
               .map(
                 s =>
-                  `${s.pubkey.toString('hex')}-${s.signature.toString('hex')}`
+                  `${hex.encode(s.pubkey)}-${hex.encode(s.signature)}`
               )
               .join('|');
       this.getScriptSatisfaction = memoize(
@@ -889,7 +876,7 @@ export function DescriptorsFactory({
           );
         const fakeSignatures = signersPubKeys.map(pubkey => ({
           pubkey,
-          signature: Buffer.alloc(72, 0)
+          signature: new Uint8Array(72)
         }));
         const { nLockTime, nSequence } = satisfyMiniscript({
           expandedMiniscript,
@@ -901,7 +888,7 @@ export function DescriptorsFactory({
       } else return undefined;
     }
 
-    getPayment(): Payment {
+    getPayment(): P2Ret {
       return this.#payment;
     }
     getAddress(): string {
@@ -909,18 +896,18 @@ export function DescriptorsFactory({
         throw new Error(`Error: could extract an address from the payment`);
       return this.#payment.address;
     }
-    getScriptPubKey(): Buffer {
+    getScriptPubKey(): Uint8Array {
       if (!this.#payment.script)
         throw new Error(`Error: could not extract script from the payment`);
       return this.#payment.script;
     }
     getScriptSatisfaction(
       signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-    ): Buffer {
+    ): Uint8Array {
       if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES')
         signatures = this.#signersPubKeys.map(pubkey => ({
           pubkey,
-          signature: Buffer.alloc(72, 0)
+          signature: new Uint8Array(72)
         }));
       const miniscript = this.#miniscript;
       const expandedMiniscript = this.#expandedMiniscript;
@@ -954,10 +941,10 @@ export function DescriptorsFactory({
     getLockTime(): number | undefined {
       return this.#getTimeConstraints()?.nLockTime;
     }
-    getWitnessScript(): Buffer | undefined {
+    getWitnessScript(): Uint8Array | undefined {
       return this.#witnessScript;
     }
-    getRedeemScript(): Buffer | undefined {
+    getRedeemScript(): Uint8Array | undefined {
       return this.#redeemScript;
     }
     getNetwork(): Network {
@@ -972,8 +959,13 @@ export function DescriptorsFactory({
 
     guessOutput() {
       const scriptPubKey = this.getScriptPubKey();
-      const decoded = getOutputScriptType(scriptPubKey);
-      const scriptType = decoded?.type;
+      let scriptType: string | undefined;
+      try {
+        const decoded = btc.OutScript.decode(scriptPubKey);
+        scriptType = decoded.type;
+      } catch {
+        scriptType = undefined;
+      }
       const isPKH = scriptType === 'pkh';
       const isWPKH = scriptType === 'wpkh';
       const isSH = scriptType === 'sh';
@@ -1035,16 +1027,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         // sh(wsh) input: push of the p2wsh redeemScript (OP_0 <32-byte SHA256(witnessScript)>)
         const redeemScript = this.getRedeemScript();
         if (!redeemScript) throw new Error('sh(wsh) must have redeemScript');
-        const shInput = Buffer.concat([
-          Buffer.from([redeemScript.length]),
+        const shInput = concatBytes(
+          Uint8Array.from([redeemScript.length]),
           redeemScript
-        ]);
+        );
         // witness: satisfaction chunks decompiled from scriptSatisfaction, plus witnessScript
         const witnessChunks = decompileScript(scriptSatisfaction);
         if (!witnessChunks)
           throw new Error('Could not decompile script satisfaction');
-        const witness: Buffer[] = witnessChunks.map(chunk =>
-          typeof chunk === 'number' ? Buffer.alloc(0) : chunk
+        const witness: Uint8Array[] = witnessChunks.map(chunk =>
+          typeof chunk === 'number' ? new Uint8Array(0) : chunk
         );
         witness.push(witnessScript);
         return (
@@ -1058,16 +1050,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
         );
         // sh input: scriptSatisfaction + push of redeemScript
-        const shInput = Buffer.concat([
+        const shInput = concatBytes(
           scriptSatisfaction,
-          Buffer.from([
+          Uint8Array.from([
             redeemScript.length > 75 ? 0x4c : redeemScript.length
           ]),
           ...(redeemScript.length > 75
-            ? [Buffer.from([redeemScript.length])]
+            ? [Uint8Array.from([redeemScript.length])]
             : []),
           redeemScript
-        ]);
+        );
         return (
           4 * (40 + varSliceSize(shInput)) +
           (isSegwitTx ? 1 : 0)
@@ -1082,11 +1074,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const witnessChunks = decompileScript(scriptSatisfaction);
         if (!witnessChunks)
           throw new Error('Could not decompile script satisfaction');
-        const witness: Buffer[] = witnessChunks.map(chunk =>
-          typeof chunk === 'number' ? Buffer.alloc(0) : chunk
+        const witness: Uint8Array[] = witnessChunks.map(chunk =>
+          typeof chunk === 'number' ? new Uint8Array(0) : chunk
         );
         witness.push(witnessScript);
-        const emptyInput = Buffer.alloc(0);
+        const emptyInput = new Uint8Array(0);
         return (
           4 * (40 + varSliceSize(emptyInput)) +
           vectorSize(witness)
@@ -1157,7 +1149,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
         ...(isTaproot
-          ? { tapInternalKey: this.getPayment().internalPubkey }
+          ? { tapInternalKey: (this.getPayment() as Record<string, unknown>)['tapInternalKey'] as Uint8Array }
           : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
@@ -1185,7 +1177,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: PsbtLike;
       value: number | bigint;
     }) {
-      psbt.addOutput({ script: new Uint8Array(this.getScriptPubKey()), amount: typeof value === 'bigint' ? value : BigInt(value) });
+      psbt.addOutput({ script: this.getScriptPubKey(), amount: typeof value === 'bigint' ? value : BigInt(value) });
     }
 
     #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
@@ -1194,9 +1186,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         throw new Error(`Error: invalid input`);
       const inputSequence = input.sequence;
       const vout = input.index;
-      let scriptPubKey: Buffer;
+      let scriptPubKey: Uint8Array;
       if (input.witnessUtxo) {
-        scriptPubKey = Buffer.from(input.witnessUtxo.script);
+        scriptPubKey = input.witnessUtxo.script;
       } else {
         if (!input.nonWitnessUtxo)
           throw new Error(
@@ -1206,7 +1198,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const parsedTx = input.nonWitnessUtxo as { outputs: { script: Uint8Array; amount: bigint }[] };
         const out = parsedTx.outputs[vout!];
         if (!out || !out.script) throw new Error(`Error: utxo should exist`);
-        scriptPubKey = Buffer.from(out.script);
+        scriptPubKey = out.script;
       }
       const locktime = this.getLockTime() || 0;
       const sequence = this.getSequence();
@@ -1217,12 +1209,12 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             ? 0xffffffff
             : 0xfffffffe;
       const sequenceRBF = sequence !== undefined ? sequence : 0xfffffffd;
-      const eqBufs = (buf1: Buffer | undefined, buf2: Uint8Array | undefined) => {
-        if (buf1 && buf2) return Buffer.compare(buf1, Buffer.from(buf2)) === 0;
+      const eqBufs = (buf1: Uint8Array | undefined, buf2: Uint8Array | undefined) => {
+        if (buf1 && buf2) return equalBytes(buf1, buf2);
         return buf1 === undefined && buf2 === undefined;
       };
       if (
-        Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
+        !equalBytes(scriptPubKey, this.getScriptPubKey()) ||
         (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
         locktime !== psbt.lockTime ||
         !eqBufs(this.getWitnessScript(), input.witnessScript) ||
@@ -1261,8 +1253,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         // Convert scure's [Uint8Array, Uint8Array][] to PartialSig[]
         const signatures: PartialSig[] = partialSigs.map(
           ([pubkey, signature]: [Uint8Array, Uint8Array]) => ({
-            pubkey: Buffer.from(pubkey),
-            signature: Buffer.from(signature)
+            pubkey,
+            signature
           })
         );
         // 2. Compute script satisfaction

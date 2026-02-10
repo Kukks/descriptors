@@ -39,7 +39,7 @@ const { signBIP32, signECPair } = signers;
 const manyKeys = Array.from({ length: 25 }, () => ECPair.makeRandom());
 
 // Make hex helper
-const hex = (pk: Buffer) => pk.toString('hex');
+const toHex = (pk: Uint8Array) => hexModule.encode(pk);
 
 // -----------------------------------------
 // Helper: build sortedmulti descriptor
@@ -109,7 +109,7 @@ async function runIntegration(descriptor: string) {
   // which pubkeys:
   const expansion = output.expand();
   const required = Object.values(expansion.expansionMap ?? {})
-    .map(e => e.pubkey?.toString('hex'))
+    .map(e => e.pubkey ? hexModule.encode(e.pubkey) : undefined)
     .filter(Boolean) as string[];
 
   // Sign with BIP32 (signs all pubkeys BIP32 controlled by masterNode)
@@ -118,7 +118,7 @@ async function runIntegration(descriptor: string) {
 
   // Sign with ECPair ONLY if it matches one of the required pubkeys
   for (const k of manyKeys) {
-    if (required.includes(k.publicKey.toString('hex')) && signed < m) {
+    if (required.includes(hexModule.encode(k.publicKey)) && signed < m) {
       signECPair({ psbt, ecpair: k });
       signed++;
     }
@@ -169,8 +169,8 @@ function expectError(label: string, fn: () => unknown): void {
     change: 0,
     index: 0
   });
-  const pubB = hex(keyB!.publicKey);
-  const pubC = hex(keyC!.publicKey);
+  const pubB = toHex(keyB!.publicKey);
+  const pubC = toHex(keyC!.publicKey);
 
   // --- Small 2-key multisigs (2-of-2)
   const smallSorted = makeSortedMulti(2, [pubA, pubB]);
@@ -193,7 +193,7 @@ function expectError(label: string, fn: () => unknown): void {
   // https://github.com/bitcoinjs/bitcoinjs-lib/pull/2297
   const manyPub = [
     pubA, // BIP32 key FIRST
-    ...manyKeys.slice(0, 15).map(k => hex(k.publicKey)) // 16 ECPairs
+    ...manyKeys.slice(0, 15).map(k => toHex(k.publicKey)) // 16 ECPairs
   ];
 
   const many = makeSortedMulti(2, manyPub);
@@ -217,7 +217,7 @@ function expectError(label: string, fn: () => unknown): void {
   // ----------------------------------------------------------
   // NEGATIVE TESTS: >20 keys must fail validation
   // ----------------------------------------------------------
-  const manyPub21 = manyKeys.slice(0, 21).map(k => hex(k.publicKey));
+  const manyPub21 = manyKeys.slice(0, 21).map(k => toHex(k.publicKey));
 
   expectError('sortedmulti with >20 keys', () => {
     const bad = makeSortedMulti(2, manyPub21);

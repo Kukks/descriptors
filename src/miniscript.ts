@@ -1,7 +1,10 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network, hash160, fromASM, numberEncodeAsm } from './compat.js';
+import { networks, Network } from './networks.js';
+import { fromASM, numberEncodeAsm } from './scriptUtils.js';
+import { hash160 } from '@scure/btc-signer/utils.js';
+import { hex } from '@scure/base';
 import type { ECPairAPI } from './types.js';
 import type { BIP32API } from './types.js';
 import { parseKeyExpression } from './keyExpressions.js';
@@ -67,7 +70,7 @@ export function expandMiniscript({
         throw new Error(
           `Error: keyExpression ${keyInfo.keyExpression} does not have a pubkey`
         );
-      return keyInfo.pubkey.toString('hex');
+      return hex.encode(keyInfo.pubkey);
     });
   if (new Set(pubkeysHex).size !== pubkeysHex.length) {
     throw new Error(
@@ -98,10 +101,10 @@ function substituteAsm({
       throw new Error(`Error: invalid expansionMap for ${key}`);
     }
     return accAsm
-      .replaceAll(`<${key}>`, `<${pubkey.toString('hex')}>`)
+      .replaceAll(`<${key}>`, `<${hex.encode(pubkey)}>`)
       .replaceAll(
         `<HASH160(${key})>`,
-        `<${hash160(pubkey).toString('hex')}>`
+        `<${hex.encode(hash160(pubkey))}>`
       );
   }, expandedAsm);
 
@@ -131,7 +134,7 @@ export function miniscript2Script({
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
-}): Buffer {
+}): Uint8Array {
   const compiled = compileMiniscript(expandedMiniscript);
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
@@ -170,7 +173,7 @@ export function satisfyMiniscript({
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
 }): {
-  scriptSatisfaction: Buffer;
+  scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
   nSequence: number | undefined;
 } {
@@ -185,12 +188,15 @@ export function satisfyMiniscript({
   //get the keyExpressions: @0, @1 from the keys in expansionMap
   const expandedSignatureMap: { [key: string]: string } = {};
   signatures.forEach(signature => {
-    const pubkeyHex = signature.pubkey.toString('hex');
+    const pubkeyHex = hex.encode(signature.pubkey);
     const keyExpression = Object.keys(expansionMap).find(
-      k => expansionMap[k]?.pubkey?.toString('hex') === pubkeyHex
+      k => {
+        const pk = expansionMap[k]?.pubkey;
+        return pk ? hex.encode(pk) === pubkeyHex : false;
+      }
     );
     expandedSignatureMap['<sig(' + keyExpression + ')>'] =
-      '<' + signature.signature.toString('hex') + '>';
+      '<' + hex.encode(signature.signature) + '>';
   });
   const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
   const knowns = Object.keys(expandedKnownsMap);
@@ -238,5 +244,5 @@ export function satisfyMiniscript({
   };
 }
 
-// Re-export numberEncodeAsm from compat for backward compatibility
-export { numberEncodeAsm } from './compat.js';
+// Re-export numberEncodeAsm from scriptUtils
+export { numberEncodeAsm } from './scriptUtils.js';

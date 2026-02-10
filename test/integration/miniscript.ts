@@ -80,7 +80,7 @@ const keys: {
         //spendingBranch is either @olderKey or @afterKey.
         //Use signersPubKeys in Descriptor's constructor to account for this
         let miniscript = expandedMiniscript;
-        const signersPubKeys: Buffer[] = [];
+        const signersPubKeys: Uint8Array[] = [];
         for (const key in keys) {
           const keyValue = keys[key];
           if (!keyValue) throw new Error();
@@ -102,7 +102,7 @@ const keys: {
             } else {
               miniscript = miniscript.replace(
                 new RegExp(key, 'g'),
-                ecpair.publicKey.toString('hex')
+                hexModule.encode(ecpair.publicKey)
               );
 
               signersPubKeys.push(ecpair.publicKey);
@@ -111,7 +111,7 @@ const keys: {
             //For the non spending branch we can simply use the pubKey as key expressions
             miniscript = miniscript.replace(
               new RegExp(key, 'g'),
-              pubkey.toString('hex')
+              hexModule.encode(pubkey)
             );
           }
         }

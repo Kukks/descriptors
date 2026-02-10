@@ -7,6 +7,7 @@
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 
 import { DescriptorsFactory } from '../dist/index.js';
+import { hex as hexModule } from '@scure/base';
 import { fixtures as customFixtures } from './fixtures/custom.js';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore.js';
 import { ECPair, BIP32 } from './helpers/crypto.js';
@@ -47,7 +48,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.descriptor}`);
         if (fixture.script) {
-          expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
+          expect(hexModule.encode(descriptor.getScriptPubKey())).toEqual(
             fixture.script
           );
         }

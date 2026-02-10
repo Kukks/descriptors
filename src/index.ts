@@ -17,3 +17,6 @@ import * as scriptExpressions from './scriptExpressions.js';
 export { scriptExpressions };
 
 export type { PsbtLike } from './psbt.js';
+
+export { networks } from './networks.js';
+export type { Network } from './networks.js';

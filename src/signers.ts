@@ -3,6 +3,7 @@
 
 import type { PsbtLike } from './psbt.js';
 import type { ECPairInterface, BIP32Interface } from './types.js';
+import { readUInt32BE } from './scriptUtils.js';
 
 /**
  * Adapts a BIP32Interface node to the HDKey interface expected by @scure/btc-signer.
@@ -19,9 +20,9 @@ function toScureHDKey(node: BIP32Interface): {
   if (!node.privateKey)
     throw new Error('Cannot create HDKey signer from neutered node');
   return {
-    publicKey: new Uint8Array(node.publicKey),
-    privateKey: new Uint8Array(node.privateKey),
-    fingerprint: node.fingerprint.readUInt32BE(0),
+    publicKey: node.publicKey,
+    privateKey: node.privateKey,
+    fingerprint: readUInt32BE(node.fingerprint),
     derive(path: string) {
       return toScureHDKey(node.derivePath(path));
     },
@@ -29,7 +30,7 @@ function toScureHDKey(node: BIP32Interface): {
       return toScureHDKey(node.derive(index));
     },
     sign(hash: Uint8Array): Uint8Array {
-      return new Uint8Array(node.sign(Buffer.from(hash)));
+      return node.sign(hash);
     }
   };
 }
@@ -50,7 +51,7 @@ function signTapBip32(
     | [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }][]
     | undefined;
   if (!tapBip32 || !tapBip32.length) return false;
-  const fp = masterNode.fingerprint.readUInt32BE(0);
+  const fp = readUInt32BE(masterNode.fingerprint);
   let signed = false;
   for (const [, { der }] of tapBip32) {
     if (der.fingerprint !== fp) continue;
@@ -60,7 +61,7 @@ function signTapBip32(
     }
     if (!node.privateKey)
       throw new Error('Cannot sign: derived node has no private key');
-    psbt.signIdx(new Uint8Array(node.privateKey), index);
+    psbt.signIdx(node.privateKey, index);
     signed = true;
   }
   return signed;
@@ -87,7 +88,7 @@ export function signInputECPair({
   ecpair: ECPairInterface;
 }): void {
   if (!ecpair.privateKey) throw new Error('Missing private key');
-  psbt.signIdx(new Uint8Array(ecpair.privateKey), index);
+  psbt.signIdx(ecpair.privateKey, index);
 }
 
 /**
@@ -108,7 +109,7 @@ export function signECPair({
   ecpair: ECPairInterface;
 }): void {
   if (!ecpair.privateKey) throw new Error('Missing private key');
-  const signed = psbt.sign(new Uint8Array(ecpair.privateKey));
+  const signed = psbt.sign(ecpair.privateKey);
   if (signed === 0) {
     throw new Error('No inputs were signed');
   }

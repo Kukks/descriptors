@@ -62,11 +62,11 @@ if (
 const ecpair = ECPair.makeRandom();
 //The same ecpair will be able to sign all the expressions below:
 const expressionsECPair = [
-  `pk(${ecpair.publicKey.toString('hex')})`,
-  `pkh(${ecpair.publicKey.toString('hex')})`,
-  `wpkh(${ecpair.publicKey.toString('hex')})`,
-  `sh(wpkh(${ecpair.publicKey.toString('hex')}))`,
-  `tr(${ecpair.publicKey.slice(1, 33).toString('hex')})`
+  `pk(${hexModule.encode(ecpair.publicKey)})`,
+  `pkh(${hexModule.encode(ecpair.publicKey)})`,
+  `wpkh(${hexModule.encode(ecpair.publicKey)})`,
+  `sh(wpkh(${hexModule.encode(ecpair.publicKey)}))`,
+  `tr(${hexModule.encode(ecpair.publicKey.slice(1, 33))})`
 ];
 
 (async () => {

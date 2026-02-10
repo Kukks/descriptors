@@ -1,4 +1,4 @@
-import { networks, Network } from './compat.js';
+import { networks, Network } from './networks.js';
 import { keyExpressionBIP32 } from './keyExpressions.js';
 import type { BIP32Interface } from './types.js';
 
