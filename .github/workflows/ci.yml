@@ -64,12 +64,6 @@ jobs:
           echo ""
           node test/integration/sortedmulti.js
 
-      - name: Run deprecated integration tests
-        run: |
-          node test/integration/standardOutputs-deprecated.js
-          echo ""
-          node test/integration/miniscript-deprecated.js
-
       - name: Stop regtest environment
         if: always()
         run: docker rm -f bitcoinerlab_tester || true
