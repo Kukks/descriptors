@@ -79,7 +79,7 @@ const expressionsECPair = [
     const outputBIP32 = new Output({ descriptor, network: NETWORK });
 
     let { txId, vout } = await regtestUtils.faucetComplex(
-      outputBIP32.getScriptPubKey(),
+      Buffer.from(outputBIP32.getScriptPubKey()),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
@@ -148,7 +148,7 @@ const expressionsECPair = [
 
     ///Update multiInputs PSBT with a similar BIP32 input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      outputBIP32.getScriptPubKey(),
+      Buffer.from(outputBIP32.getScriptPubKey()),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
@@ -168,7 +168,7 @@ const expressionsECPair = [
       network: NETWORK
     });
     let { txId, vout } = await regtestUtils.faucetComplex(
-      outputECPair.getScriptPubKey(),
+      Buffer.from(outputECPair.getScriptPubKey()),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
@@ -201,7 +201,7 @@ const expressionsECPair = [
 
     ///Update multiInputs PSBT with a similar ECPair input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      outputECPair.getScriptPubKey(),
+      Buffer.from(outputECPair.getScriptPubKey()),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));

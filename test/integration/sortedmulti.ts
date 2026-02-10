@@ -86,7 +86,7 @@ async function runIntegration(descriptor: string) {
 
   // FUND
   const { txId, vout } = await regtestUtils.faucetComplex(
-    output.getScriptPubKey(),
+    Buffer.from(output.getScriptPubKey()),
     INITIAL_VALUE
   );
 

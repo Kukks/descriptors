@@ -126,7 +126,7 @@ const keys: {
         });
 
         const { txId, vout } = await regtestUtils.faucetComplex(
-          output.getScriptPubKey(),
+          Buffer.from(output.getScriptPubKey()),
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
