@@ -42,8 +42,12 @@ describe('BIP86 Taproot Derivation Path Tests', () => {
     const address = output.getAddress();
     const scriptPubKey = hexModule.encode(output.getScriptPubKey());
     const payment = output.getPayment() as Record<string, unknown>;
-    const internalKey = payment['tapInternalKey'] ? hexModule.encode(payment['tapInternalKey'] as Uint8Array) : undefined;
-    const pubKey = payment['tweakedPubkey'] ? hexModule.encode(payment['tweakedPubkey'] as Uint8Array) : undefined;
+    const internalKey = payment['tapInternalKey']
+      ? hexModule.encode(payment['tapInternalKey'] as Uint8Array)
+      : undefined;
+    const pubKey = payment['tweakedPubkey']
+      ? hexModule.encode(payment['tweakedPubkey'] as Uint8Array)
+      : undefined;
 
     expect(address).toBe(
       'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr'

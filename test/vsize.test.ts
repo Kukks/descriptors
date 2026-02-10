@@ -110,7 +110,10 @@ describe('vsize', () => {
             })
         );
 
-        const psbt = Transaction.fromPSBT(base64.decode(fixture.psbt), { allowUnknownOutputs: true, disableScriptCheck: true });
+        const psbt = Transaction.fromPSBT(base64.decode(fixture.psbt), {
+          allowUnknownOutputs: true,
+          disableScriptCheck: true
+        });
         // Deserialize signaturesPerInput
         const signaturesPerInput = fixture.signaturesPerInput.map(signatures =>
           signatures.map(sig => ({

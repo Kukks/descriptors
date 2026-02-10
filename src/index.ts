@@ -3,10 +3,7 @@
 
 export type { KeyInfo, Expansion } from './types.js';
 export type { OutputInstance } from './descriptors.js';
-export {
-  DescriptorsFactory,
-  OutputConstructor
-} from './descriptors.js';
+export { DescriptorsFactory, OutputConstructor } from './descriptors.js';
 export { DescriptorChecksum as checksum } from './checksum.js';
 
 import * as signers from './signers.js';

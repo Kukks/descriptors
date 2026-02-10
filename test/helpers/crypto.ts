@@ -222,9 +222,10 @@ export const ECPair: ECPairAPI = {
 // ---------------------------------------------------------------------------
 
 /** Map a Network to the versions object expected by @scure/bip32's HDKey. */
-function networkToVersions(
-  network: Network
-): { public: number; private: number } {
+function networkToVersions(network: Network): {
+  public: number;
+  private: number;
+} {
   return { public: network.bip32.public, private: network.bip32.private };
 }
 

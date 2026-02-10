@@ -15,7 +15,11 @@ import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 
 import { ECPair, BIP32, networks } from '../helpers/crypto.js';
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/index.js';
+import {
+  DescriptorsFactory,
+  keyExpressionBIP32,
+  signers
+} from '../../dist/index.js';
 
 const regtestUtils = new RegtestUtils();
 const NETWORK = networks.regtest;
@@ -92,7 +96,10 @@ async function runIntegration(descriptor: string) {
 
   const { txHex } = await regtestUtils.fetch(txId);
 
-  const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
+  const psbt = new Transaction({
+    allowUnknownOutputs: true,
+    disableScriptCheck: true
+  });
 
   const finalizeInput = output.updatePsbtAsInput({
     psbt,
@@ -109,7 +116,7 @@ async function runIntegration(descriptor: string) {
   // which pubkeys:
   const expansion = output.expand();
   const required = Object.values(expansion.expansionMap ?? {})
-    .map(e => e.pubkey ? hexModule.encode(e.pubkey) : undefined)
+    .map(e => (e.pubkey ? hexModule.encode(e.pubkey) : undefined))
     .filter(Boolean) as string[];
 
   // Sign with BIP32 (signs all pubkeys BIP32 controlled by masterNode)

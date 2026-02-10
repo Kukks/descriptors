@@ -40,8 +40,7 @@ export function computeFinalScripts(
   // Helper: decompile scriptSatisfaction into witness items
   function satisfactionToWitness(): Uint8Array[] {
     const chunks = decompileScript(scriptSatisfaction);
-    if (!chunks)
-      throw new Error('Could not decompile script satisfaction');
+    if (!chunks) throw new Error('Could not decompile script satisfaction');
     return chunks.map(chunk =>
       typeof chunk === 'number'
         ? new Uint8Array(0) // OP_0 or opcodes become empty push
@@ -68,12 +67,9 @@ export function computeFinalScripts(
   else {
     // Build scriptSig: scriptSatisfaction bytes + push of lockingScript (redeemScript)
     const chunks = decompileScript(scriptSatisfaction);
-    if (!chunks)
-      throw new Error('Could not decompile script satisfaction');
+    if (!chunks) throw new Error('Could not decompile script satisfaction');
     const scriptItems: (number | Uint8Array)[] = chunks.map(chunk =>
-      typeof chunk === 'number'
-        ? chunk
-        : chunk
+      typeof chunk === 'number' ? chunk : chunk
     );
     scriptItems.push(lockingScript);
     finalScriptSig = btc.Script.encode(scriptItems);
@@ -172,7 +168,11 @@ export function updatePsbt({
 
   if (locktime) {
     const currentLocktime = psbt.lockTime;
-    if (currentLocktime && currentLocktime !== locktime && currentLocktime !== 0)
+    if (
+      currentLocktime &&
+      currentLocktime !== locktime &&
+      currentLocktime !== 0
+    )
       throw new Error(
         `Error: transaction locktime was already set with a different value: ${locktime} != ${currentLocktime}`
       );
@@ -188,6 +188,7 @@ export function updatePsbt({
     }
     if (sequence === undefined && rbf) sequence = 0xfffffffd;
     // Set locktime via scure's internal global field
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (psbt as any).global.fallbackLocktime = locktime;
   } else {
     if (sequence === undefined) {
@@ -207,7 +208,10 @@ export function updatePsbt({
 
   if (tapInternalKey) {
     //Taproot
-    const tapBip32Derivation: [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }][] = keysInfo
+    const tapBip32Derivation: [
+      Uint8Array,
+      { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }
+    ][] = keysInfo
       .filter(
         (keyInfo: KeyInfo) =>
           keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
@@ -225,7 +229,10 @@ export function updatePsbt({
               path: bip32Path(keyInfo.path!)
             }
           }
-        ] as [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }];
+        ] as [
+          Uint8Array,
+          { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }
+        ];
       });
 
     if (tapBip32Derivation.length)
@@ -236,7 +243,10 @@ export function updatePsbt({
     if (tapBip32Derivation.length > 1)
       throw new Error('Only single key taproot inputs are currently supported');
   } else {
-    const bip32Derivation: [Uint8Array, { fingerprint: number; path: number[] }][] = keysInfo
+    const bip32Derivation: [
+      Uint8Array,
+      { fingerprint: number; path: number[] }
+    ][] = keysInfo
       .filter(
         (keyInfo: KeyInfo) =>
           keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
@@ -264,6 +274,7 @@ export function updatePsbt({
   if (witnessScript) input['witnessScript'] = witnessScript;
   if (redeemScript) input['redeemScript'] = redeemScript;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   psbt.addInput(input as any);
   return psbt.inputsLength - 1;
 }

@@ -48,7 +48,10 @@ function signTapBip32(
 ): boolean {
   const input = psbt.getInput(index);
   const tapBip32 = input.tapBip32Derivation as
-    | [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }][]
+    | [
+        Uint8Array,
+        { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }
+      ][]
     | undefined;
   if (!tapBip32 || !tapBip32.length) return false;
   const fp = readUInt32BE(masterNode.fingerprint);
@@ -164,7 +167,7 @@ export function signBIP32({
   let nonTapSigned = 0;
   try {
     nonTapSigned = psbt.sign(toScureHDKey(masterNode));
-  } catch (e) {
+  } catch {
     // sign() throws 'No inputs signed' when no bip32Derivation matches
   }
   if (tapSigned + nonTapSigned === 0) {

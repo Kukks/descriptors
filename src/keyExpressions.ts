@@ -4,7 +4,12 @@
 import { networks, Network } from './networks.js';
 import { hex } from '@scure/base';
 import { concatBytes } from '@scure/btc-signer/utils.js';
-import type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface } from './types.js';
+import type {
+  ECPairAPI,
+  ECPairInterface,
+  BIP32API,
+  BIP32Interface
+} from './types.js';
 import type { KeyInfo } from './types.js';
 
 import * as RE from './re.js';
@@ -149,11 +154,7 @@ export function parseKeyExpression({
     //fromWIF will throw if the wif is not valid
     pubkey = ecpair.publicKey;
     //Check segwit requires compressed keys
-    if (
-      typeof isSegwit === 'boolean' &&
-      isSegwit &&
-      pubkey.length !== 33
-    ) {
+    if (typeof isSegwit === 'boolean' && isSegwit && pubkey.length !== 33) {
       throw new Error(`Error: invalid pubkey`);
     }
     //match xpub:

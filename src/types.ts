@@ -25,10 +25,19 @@ export interface ECPairInterface {
  * API for creating EC key pairs (replaces ecpair's ECPairAPI).
  */
 export interface ECPairAPI {
-  fromPublicKey(publicKey: Uint8Array, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
-  fromPrivateKey(privateKey: Uint8Array, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  fromPublicKey(
+    publicKey: Uint8Array,
+    options?: { network?: Network; compressed?: boolean }
+  ): ECPairInterface;
+  fromPrivateKey(
+    privateKey: Uint8Array,
+    options?: { network?: Network; compressed?: boolean }
+  ): ECPairInterface;
   fromWIF(wif: string, network?: Network | Network[]): ECPairInterface;
-  makeRandom(options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  makeRandom(options?: {
+    network?: Network;
+    compressed?: boolean;
+  }): ECPairInterface;
   isPoint(p: Uint8Array): boolean;
 }
 
@@ -61,8 +70,16 @@ export interface BIP32Interface {
  */
 export interface BIP32API {
   fromBase58(base58: string, network?: Network): BIP32Interface;
-  fromPublicKey(publicKey: Uint8Array, chainCode: Uint8Array, network?: Network): BIP32Interface;
-  fromPrivateKey(privateKey: Uint8Array, chainCode: Uint8Array, network?: Network): BIP32Interface;
+  fromPublicKey(
+    publicKey: Uint8Array,
+    chainCode: Uint8Array,
+    network?: Network
+  ): BIP32Interface;
+  fromPrivateKey(
+    privateKey: Uint8Array,
+    chainCode: Uint8Array,
+    network?: Network
+  ): BIP32Interface;
   fromSeed(seed: Uint8Array, network?: Network): BIP32Interface;
 }
 

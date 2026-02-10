@@ -32,7 +32,11 @@ console.log(
   `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
 );
 
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/index.js';
+import {
+  DescriptorsFactory,
+  keyExpressionBIP32,
+  signers
+} from '../../dist/index.js';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 
@@ -130,7 +134,10 @@ const keys: {
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
-        const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
+        const psbt = new Transaction({
+          allowUnknownOutputs: true,
+          disableScriptCheck: true
+        });
         const inputFinalizer = output.updatePsbtAsInput({ psbt, vout, txHex });
         //There are different ways to add an output:
         //import { address } from 'bitcoinjs-lib';
@@ -181,9 +188,9 @@ const keys: {
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
             psbt.lockTime
-          }, input sequence: ${psbt.getInput(0)?.sequence?.toString(
-            16
-          )}, ${output
+          }, input sequence: ${psbt
+            .getInput(0)
+            ?.sequence?.toString(16)}, ${output
             .expand()
             .expandedExpression?.replace('@0', '@olderKey')
             .replace('@1', '@afterKey')}: OK`

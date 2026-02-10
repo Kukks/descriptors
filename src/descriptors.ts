@@ -61,9 +61,8 @@ const MAX_OPS_PER_SCRIPT = 201;
 function countNonPushOnlyOPs(script: Uint8Array): number {
   const decompiled = decompileScript(script);
   if (!decompiled) throw new Error(`Error: cound not decompile ${script}`);
-  return decompiled.filter(
-    op => typeof op === 'number' && op > btc.OP.OP_16
-  ).length;
+  return decompiled.filter(op => typeof op === 'number' && op > btc.OP.OP_16)
+    .length;
 }
 
 function vectorSize(someVector: Uint8Array[]): number {
@@ -92,14 +91,14 @@ function safeP2wsh(
   net?: ReturnType<typeof toBtcSignerNetwork>
 ): P2Ret {
   try {
-    return btc.p2wsh(
-      { type: 'unknown' as const, script: innerScript },
-      net
-    );
+    return btc.p2wsh({ type: 'unknown' as const, script: innerScript }, net);
   } catch {
     // Manual computation: OP_0 <SHA256(script)>
     const scriptHash = sha256(innerScript);
-    const outputScript = btc.OutScript.encode({ type: 'wsh', hash: scriptHash });
+    const outputScript = btc.OutScript.encode({
+      type: 'wsh',
+      hash: scriptHash
+    });
     const address = net
       ? btc.Address(net).encode({ type: 'wsh', hash: scriptHash })
       : undefined;
@@ -121,10 +120,7 @@ function safeP2sh(
   net?: ReturnType<typeof toBtcSignerNetwork>
 ): P2Ret {
   try {
-    return btc.p2sh(
-      { type: 'unknown' as const, script: innerScript },
-      net
-    );
+    return btc.p2sh({ type: 'unknown' as const, script: innerScript }, net);
   } catch {
     // Manual computation: OP_HASH160 <HASH160(script)> OP_EQUAL
     const scriptHash = hash160(innerScript);
@@ -320,7 +316,9 @@ export function DescriptorsFactory({
         throw new Error(`Error: could not get an address in ${descriptor}`);
       let output: Uint8Array;
       try {
-        const decoded = btc.Address(toBtcSignerNetwork(network)).decode(matchedAddress);
+        const decoded = btc
+          .Address(toBtcSignerNetwork(network))
+          .decode(matchedAddress);
         output = btc.OutScript.encode(decoded);
       } catch (e) {
         void e;
@@ -853,10 +851,7 @@ export function DescriptorsFactory({
         signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES'
           ? signatures
           : signatures
-              .map(
-                s =>
-                  `${hex.encode(s.pubkey)}-${hex.encode(s.signature)}`
-              )
+              .map(s => `${hex.encode(s.pubkey)}-${hex.encode(s.signature)}`)
               .join('|');
       this.getScriptSatisfaction = memoize(
         this.getScriptSatisfaction,
@@ -1020,16 +1015,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         );
       } else if (expansion ? expansion.startsWith('wpkh(') : isWPKH) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
-        return (
-          41 * 4 +
-          (1 + signatureSize(firstSignature) + 34)
-        );
+        return 41 * 4 + (1 + signatureSize(firstSignature) + 34);
       } else if (expansion ? expansion.startsWith('sh(wpkh(') : isSH) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
-        return (
-          64 * 4 +
-          (1 + signatureSize(firstSignature) + 34)
-        );
+        return 64 * 4 + (1 + signatureSize(firstSignature) + 34);
       } else if (expansion?.startsWith('sh(wsh(')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
         const witnessScript = this.getWitnessScript();
@@ -1053,10 +1042,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           typeof chunk === 'number' ? new Uint8Array(0) : chunk
         );
         witness.push(witnessScript);
-        return (
-          4 * (40 + varSliceSize(shInput)) +
-          vectorSize(witness)
-        );
+        return 4 * (40 + varSliceSize(shInput)) + vectorSize(witness);
       } else if (expansion?.startsWith('sh(')) {
         const redeemScript = this.getRedeemScript();
         if (!redeemScript) throw new Error('sh() must provide redeemScript');
@@ -1074,10 +1060,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             : []),
           redeemScript
         );
-        return (
-          4 * (40 + varSliceSize(shInput)) +
-          (isSegwitTx ? 1 : 0)
-        );
+        return 4 * (40 + varSliceSize(shInput)) + (isSegwitTx ? 1 : 0);
       } else if (expansion?.startsWith('wsh(')) {
         const witnessScript = this.getWitnessScript();
         if (!witnessScript) throw new Error('wsh must provide witnessScript');
@@ -1093,16 +1076,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         );
         witness.push(witnessScript);
         const emptyInput = new Uint8Array(0);
-        return (
-          4 * (40 + varSliceSize(emptyInput)) +
-          vectorSize(witness)
-        );
+        return 4 * (40 + varSliceSize(emptyInput)) + vectorSize(witness);
       } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
-        return (
-          41 * 4 +
-          (1 + 65)
-        );
+        return 41 * 4 + (1 + 65);
       } else {
         throw new Error(errorMsg);
       }
@@ -1163,7 +1140,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
         ...(isTaproot
-          ? { tapInternalKey: (this.getPayment() as Record<string, unknown>)['tapInternalKey'] as Uint8Array }
+          ? {
+              tapInternalKey: (this.getPayment() as Record<string, unknown>)[
+                'tapInternalKey'
+              ] as Uint8Array
+            }
           : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
@@ -1191,13 +1172,15 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: PsbtLike;
       value: number | bigint;
     }) {
-      psbt.addOutput({ script: this.getScriptPubKey(), amount: typeof value === 'bigint' ? value : BigInt(value) });
+      psbt.addOutput({
+        script: this.getScriptPubKey(),
+        amount: typeof value === 'bigint' ? value : BigInt(value)
+      });
     }
 
     #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
       const input = psbt.getInput(index);
-      if (!input)
-        throw new Error(`Error: invalid input`);
+      if (!input) throw new Error(`Error: invalid input`);
       const inputSequence = input.sequence;
       const vout = input.index;
       let scriptPubKey: Uint8Array;
@@ -1209,7 +1192,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             `Error: input should have either witnessUtxo or nonWitnessUtxo`
           );
         // nonWitnessUtxo is stored as a parsed tx struct by scure
-        const parsedTx = input.nonWitnessUtxo as { outputs: { script: Uint8Array; amount: bigint }[] };
+        const parsedTx = input.nonWitnessUtxo as {
+          outputs: { script: Uint8Array; amount: bigint }[];
+        };
         const out = parsedTx.outputs[vout!];
         if (!out || !out.script) throw new Error(`Error: utxo should exist`);
         scriptPubKey = out.script;
@@ -1223,7 +1208,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             ? 0xffffffff
             : 0xfffffffe;
       const sequenceRBF = sequence !== undefined ? sequence : 0xfffffffd;
-      const eqBufs = (buf1: Uint8Array | undefined, buf2: Uint8Array | undefined) => {
+      const eqBufs = (
+        buf1: Uint8Array | undefined,
+        buf2: Uint8Array | undefined
+      ) => {
         if (buf1 && buf2) return equalBytes(buf1, buf2);
         return buf1 === undefined && buf2 === undefined;
       };
@@ -1279,7 +1267,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const isP2SH = redeemScript !== undefined;
         const lockingScript = this.getWitnessScript() ?? redeemScript;
         if (!lockingScript)
-          throw new Error(`Error: cannot determine locking script for miniscript finalization`);
+          throw new Error(
+            `Error: cannot determine locking script for miniscript finalization`
+          );
         const { finalScriptSig, finalScriptWitness } = computeFinalScripts(
           scriptSatisfaction,
           lockingScript,
@@ -1290,7 +1280,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         // 4. Set final scripts on the input
         const updateFields: Record<string, unknown> = {};
         if (finalScriptSig) updateFields['finalScriptSig'] = finalScriptSig;
-        if (finalScriptWitness) updateFields['finalScriptWitness'] = finalScriptWitness;
+        if (finalScriptWitness)
+          updateFields['finalScriptWitness'] = finalScriptWitness;
         psbt.updateInput(index, updateFields, true);
       }
     }

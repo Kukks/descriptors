@@ -102,10 +102,7 @@ function substituteAsm({
     }
     return accAsm
       .replaceAll(`<${key}>`, `<${hex.encode(pubkey)}>`)
-      .replaceAll(
-        `<HASH160(${key})>`,
-        `<${hex.encode(hash160(pubkey))}>`
-      );
+      .replaceAll(`<HASH160(${key})>`, `<${hex.encode(hash160(pubkey))}>`);
   }, expandedAsm);
 
   //Now clean it and prepare it so that fromASM can be called:
@@ -139,9 +136,7 @@ export function miniscript2Script({
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
-  return fromASM(
-    substituteAsm({ expandedAsm: compiled.asm, expansionMap })
-  );
+  return fromASM(substituteAsm({ expandedAsm: compiled.asm, expansionMap }));
 }
 
 /**
@@ -189,12 +184,10 @@ export function satisfyMiniscript({
   const expandedSignatureMap: { [key: string]: string } = {};
   signatures.forEach(signature => {
     const pubkeyHex = hex.encode(signature.pubkey);
-    const keyExpression = Object.keys(expansionMap).find(
-      k => {
-        const pk = expansionMap[k]?.pubkey;
-        return pk ? hex.encode(pk) === pubkeyHex : false;
-      }
-    );
+    const keyExpression = Object.keys(expansionMap).find(k => {
+      const pk = expansionMap[k]?.pubkey;
+      return pk ? hex.encode(pk) === pubkeyHex : false;
+    });
     expandedSignatureMap['<sig(' + keyExpression + ')>'] =
       '<' + hex.encode(signature.signature) + '>';
   });
