@@ -258,13 +258,11 @@ export function DescriptorsFactory({
       //x-only - Schnorr
       return schnorr.verify(signature, msghash, pubkey);
     } else {
-      // ECDSA — PSBT signatures are DER-encoded
-      return secp256k1.verify(
-        signature,
-        msghash,
-        pubkey,
-        { format: 'der' }
-      );
+      // ECDSA — bitcoinjs-lib v7 decodes DER to compact r||s (64 bytes)
+      if (signature.length === 64) {
+        return secp256k1.verify(signature, msghash, pubkey);
+      }
+      return secp256k1.verify(signature, msghash, pubkey, { format: 'der' });
     }
   };
 
