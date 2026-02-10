@@ -40,6 +40,7 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+          scope: '@kukks'
           cache: npm
       - run: npm ci
       - run: npm run build
@@ -60,6 +61,7 @@ jobs:
         with:
           node-version: 20
           registry-url: https://npm.pkg.github.com
+          scope: '@kukks'
           cache: npm
       - run: npm ci
       - run: npm run build
