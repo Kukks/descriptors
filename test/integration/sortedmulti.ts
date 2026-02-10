@@ -9,7 +9,8 @@
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { Psbt } from 'bitcoinjs-lib';
+import { Transaction } from '@scure/btc-signer';
+import { hex as hexModule } from '@scure/base';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 
@@ -73,7 +74,7 @@ function parseSortedmultiParams(descriptor: string): {
 
 // -----------------------------------------
 // Run a full regtest cycle:
-// fund → build PSBT → sign → finalize → broadcast
+// fund -> build PSBT -> sign -> finalize -> broadcast
 // -----------------------------------------
 async function runIntegration(descriptor: string) {
   console.log(`\nTesting descriptor: ${descriptor}`);
@@ -91,7 +92,7 @@ async function runIntegration(descriptor: string) {
 
   const { txHex } = await regtestUtils.fetch(txId);
 
-  const psbt = new Psbt();
+  const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
 
   const finalizeInput = output.updatePsbtAsInput({
     psbt,
@@ -126,20 +127,18 @@ async function runIntegration(descriptor: string) {
   // Finalize
   finalizeInput({ psbt });
 
-  const tx = psbt.extractTransaction();
-
   // Broadcast
-  await regtestUtils.broadcast(tx.toHex());
+  await regtestUtils.broadcast(hexModule.encode(psbt.extract()));
 
   // Verify
   await regtestUtils.verify({
-    txId: tx.getId(),
+    txId: psbt.id,
     address: FINAL_ADDRESS,
     vout: 0,
     value: FINAL_VALUE
   });
 
-  console.log(`OK → ${descriptor}`);
+  console.log(`OK -> ${descriptor}`);
 }
 
 // ----------------------------------------------------------
@@ -148,11 +147,11 @@ async function runIntegration(descriptor: string) {
 function expectError(label: string, fn: () => unknown): void {
   try {
     fn();
-    console.error(`❌ Expected error not thrown: ${label}`);
+    console.error(`Expected error not thrown: ${label}`);
     process.exit(1);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`✓ Error OK (${label}): ${msg.slice(0, 120)}…`);
+    console.log(`OK Error (${label}): ${msg.slice(0, 120)}`);
   }
 }
 
@@ -161,7 +160,6 @@ function expectError(label: string, fn: () => unknown): void {
   // POSITIVE TESTS (real regtest, full integration)
   // ----------------------------------------------------------
 
-  // Usamos siempre las mismas claves que conocemos:
   const keyB = manyKeys[0];
   const keyC = manyKeys[1];
 
@@ -213,7 +211,6 @@ function expectError(label: string, fn: () => unknown): void {
   // ----------------------------------------------------------
   expectError('M > N', () => {
     const bad = makeSortedMulti(3, [pubA, pubB]); // M=3 N=2
-    // Debe fallar al intentar parsear/expandir:
     new Output({ descriptor: wrapWSH(bad), network: NETWORK });
   });
 

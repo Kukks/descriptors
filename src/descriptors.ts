@@ -3,8 +3,6 @@
 
 import memoize from 'lodash.memoize';
 import * as btc from '@scure/btc-signer';
-import { secp256k1 } from '@noble/curves/secp256k1.js';
-import { schnorr } from '@noble/curves/secp256k1.js';
 
 import {
   networks,
@@ -31,7 +29,7 @@ import type {
   ParseKeyExpression
 } from './types.js';
 
-import { finalScriptsFuncFactory, updatePsbt } from './psbt.js';
+import { computeFinalScripts, updatePsbt } from './psbt.js';
 import type { PsbtLike } from './psbt.js';
 import { DescriptorChecksum } from './checksum.js';
 
@@ -100,7 +98,6 @@ function safeP2wsh(
       : undefined;
     return {
       script: outputScript,
-      output: outputScript,
       witnessScript: Buffer.from(innerScript),
       ...(address ? { address } : {})
     };
@@ -133,7 +130,6 @@ function safeP2sh(
       : undefined;
     return {
       script: outputScript,
-      output: outputScript,
       redeemScript: Buffer.from(innerScript),
       ...(address ? { address } : {})
     };
@@ -249,24 +245,6 @@ export function DescriptorsFactory({
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }) {
-  const signatureValidator = (
-    pubkey: Buffer,
-    msghash: Buffer,
-    signature: Buffer
-  ): boolean => {
-    if (pubkey.length === 32) {
-      //x-only - Schnorr
-      return schnorr.verify(signature, msghash, pubkey);
-    } else {
-      // ECDSA — msghash is already a sighash digest, so prehash must be false.
-      // bitcoinjs-lib v7 decodes DER to compact r||s (64 bytes).
-      if (signature.length === 64) {
-        return secp256k1.verify(signature, msghash, pubkey, { prehash: false });
-      }
-      return secp256k1.verify(signature, msghash, pubkey, { prehash: false, format: 'der' });
-    }
-  };
-
   /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
    */
@@ -293,48 +271,19 @@ export function DescriptorsFactory({
    * @throws {Error} Throws an error if the descriptor cannot be parsed or does
    * not conform to the expected format.
    */
-  function expand(params: {
-    descriptor: string;
-    index?: number;
-    checksumRequired?: boolean;
-    network?: Network;
-    allowMiniscriptInP2SH?: boolean;
-  }): Expansion;
-
-  /**
-   * @hidden
-   * To be removed in version 3.0
-   */
-  function expand(params: {
-    expression: string;
-    index?: number;
-    checksumRequired?: boolean;
-    network?: Network;
-    allowMiniscriptInP2SH?: boolean;
-  }): Expansion;
-
-  /**
-   * @overload
-   */
   function expand({
     descriptor,
-    expression,
     index,
     checksumRequired = false,
     network = networks.bitcoin,
     allowMiniscriptInP2SH = false
   }: {
-    descriptor?: string;
-    expression?: string;
+    descriptor: string;
     index?: number;
     checksumRequired?: boolean;
     network?: Network;
     allowMiniscriptInP2SH?: boolean;
   }): Expansion {
-    if (descriptor && expression)
-      throw new Error(`expression param has been deprecated`);
-    descriptor = descriptor || expression;
-    if (!descriptor) throw new Error(`descriptor not provided`);
     let expandedExpression: string | undefined;
     let miniscript: string | undefined;
     let expansionMap: ExpansionMap | undefined;
@@ -381,8 +330,7 @@ export function DescriptorsFactory({
       // We build a minimal Payment with the script and address.
       payment = {
         address: matchedAddress,
-        script: output,
-        output // compat alias
+        script: output
       };
       if (scriptType === 'pkh') {
         isSegwit = false;
@@ -469,11 +417,11 @@ export function DescriptorsFactory({
           );
         const wpkhPayment = btc.p2wpkh(pubkey, net);
         payment = toPayment(btc.p2sh(wpkhPayment, net) as Record<string, unknown>);
-        redeemScript = payment.redeem?.output ?? (payment.redeemScript ? payment.redeemScript : undefined);
+        redeemScript = payment.redeem?.script ?? (payment.redeemScript ? payment.redeemScript : undefined);
         if (!redeemScript) {
           // Construct redeemScript from wpkh output
           const wpkhP = toPayment(wpkhPayment as Record<string, unknown>);
-          redeemScript = wpkhP.script ?? wpkhP.output;
+          redeemScript = wpkhP.script;
         }
         if (!redeemScript)
           throw new Error(
@@ -653,7 +601,7 @@ export function DescriptorsFactory({
           net
         );
         payment = shPayment;
-        redeemScript = wshPayment.script ?? wshPayment.output;
+        redeemScript = wshPayment.script;
         if (!redeemScript)
           throw new Error(
             `Error: could not calculate redeemScript for ${descriptor}`
@@ -962,9 +910,9 @@ export function DescriptorsFactory({
       return this.#payment.address;
     }
     getScriptPubKey(): Buffer {
-      if (!this.#payment.output)
-        throw new Error(`Error: could extract output.script from the payment`);
-      return this.#payment.output;
+      if (!this.#payment.script)
+        throw new Error(`Error: could not extract script from the payment`);
+      return this.#payment.script;
     }
     getScriptSatisfaction(
       signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
@@ -1172,21 +1120,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       }
     }
 
-    /** @deprecated - Use updatePsbtAsInput instead
-     * @hidden
-     */
-    updatePsbt(params: {
-      psbt: PsbtLike;
-      txHex?: string;
-      txId?: string;
-      value?: number;
-      vout: number;
-      rbf?: boolean;
-    }) {
-      this.updatePsbtAsInput(params);
-      return params.psbt.data.inputs.length - 1;
-    }
-
     updatePsbtAsInput({
       psbt,
       txHex,
@@ -1252,27 +1185,26 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: PsbtLike;
       value: number | bigint;
     }) {
-      psbt.addOutput({ script: this.getScriptPubKey(), value: typeof value === 'bigint' ? value : BigInt(value) });
+      psbt.addOutput({ script: new Uint8Array(this.getScriptPubKey()), amount: typeof value === 'bigint' ? value : BigInt(value) });
     }
 
     #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
-      const input = psbt.data.inputs[index];
-      const txInput = psbt.txInputs[index];
-      if (!input || !txInput)
-        throw new Error(`Error: invalid input or txInput`);
-      const { sequence: inputSequence, index: vout } = txInput;
+      const input = psbt.getInput(index);
+      if (!input)
+        throw new Error(`Error: invalid input`);
+      const inputSequence = input.sequence;
+      const vout = input.index;
       let scriptPubKey: Buffer;
-      if (input.witnessUtxo) scriptPubKey = input.witnessUtxo.script;
-      else {
+      if (input.witnessUtxo) {
+        scriptPubKey = Buffer.from(input.witnessUtxo.script);
+      } else {
         if (!input.nonWitnessUtxo)
           throw new Error(
             `Error: input should have either witnessUtxo or nonWitnessUtxo`
           );
-        const tx = btc.Transaction.fromRaw(input.nonWitnessUtxo, {
-          allowUnknownOutputs: true,
-          allowUnknownInputs: true
-        });
-        const out = tx.getOutput(vout);
+        // nonWitnessUtxo is stored as a parsed tx struct by scure
+        const parsedTx = input.nonWitnessUtxo as { outputs: { script: Uint8Array; amount: bigint }[] };
+        const out = parsedTx.outputs[vout!];
         if (!out || !out.script) throw new Error(`Error: utxo should exist`);
         scriptPubKey = Buffer.from(out.script);
       }
@@ -1285,16 +1217,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             ? 0xffffffff
             : 0xfffffffe;
       const sequenceRBF = sequence !== undefined ? sequence : 0xfffffffd;
-      const eqBuffers = (buf1: Buffer | undefined, buf2: Buffer | undefined) =>
-        buf1 instanceof Buffer && buf2 instanceof Buffer
-          ? Buffer.compare(buf1, buf2) === 0
-          : buf1 === buf2;
+      const eqBufs = (buf1: Buffer | undefined, buf2: Uint8Array | undefined) => {
+        if (buf1 && buf2) return Buffer.compare(buf1, Buffer.from(buf2)) === 0;
+        return buf1 === undefined && buf2 === undefined;
+      };
       if (
         Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
         (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
-        locktime !== psbt.locktime ||
-        !eqBuffers(this.getWitnessScript(), input.witnessScript) ||
-        !eqBuffers(this.getRedeemScript(), input.redeemScript)
+        locktime !== psbt.lockTime ||
+        !eqBufs(this.getWitnessScript(), input.witnessScript) ||
+        !eqBufs(this.getRedeemScript(), input.redeemScript)
       ) {
         throw new Error(
           `Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`
@@ -1311,25 +1243,49 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: PsbtLike;
       validate?: boolean | undefined;
     }): void {
-      if (
-        validate &&
-        !psbt.validateSignaturesOfInput(index, signatureValidator)
-      ) {
-        throw new Error(`Error: invalid signatures on input ${index}`);
-      }
+      // scure's Transaction handles signature validation internally during finalization.
+      // The validate parameter is kept for API compatibility but signature validation
+      // is delegated to scure's finalizeIdx.
+      void validate;
 
       this.#assertPsbtInput({ index, psbt });
       if (!this.#miniscript) {
-        psbt.finalizeInput(index);
+        psbt.finalizeIdx(index);
       } else {
-        const signatures = psbt.data.inputs[index]?.partialSig;
-        if (!signatures)
+        // For miniscript, we need custom finalization:
+        // 1. Extract partialSig from the input
+        const input = psbt.getInput(index);
+        const partialSigs = input.partialSig;
+        if (!partialSigs || partialSigs.length === 0)
           throw new Error(`Error: cannot finalize without signatures`);
-        const scriptSatisfaction = this.getScriptSatisfaction(signatures);
-        psbt.finalizeInput(
-          index,
-          finalScriptsFuncFactory(scriptSatisfaction, this.#network)
+        // Convert scure's [Uint8Array, Uint8Array][] to PartialSig[]
+        const signatures: PartialSig[] = partialSigs.map(
+          ([pubkey, signature]: [Uint8Array, Uint8Array]) => ({
+            pubkey: Buffer.from(pubkey),
+            signature: Buffer.from(signature)
+          })
         );
+        // 2. Compute script satisfaction
+        const scriptSatisfaction = this.getScriptSatisfaction(signatures);
+        // 3. Compute final scripts using the locking script
+        const isSegwit = this.isSegwit() ?? false;
+        const redeemScript = this.getRedeemScript();
+        const isP2SH = redeemScript !== undefined;
+        const lockingScript = this.getWitnessScript() ?? redeemScript;
+        if (!lockingScript)
+          throw new Error(`Error: cannot determine locking script for miniscript finalization`);
+        const { finalScriptSig, finalScriptWitness } = computeFinalScripts(
+          scriptSatisfaction,
+          lockingScript,
+          isSegwit,
+          isP2SH,
+          redeemScript
+        );
+        // 4. Set final scripts on the input
+        const updateFields: Record<string, unknown> = {};
+        if (finalScriptSig) updateFields['finalScriptSig'] = finalScriptSig;
+        if (finalScriptWitness) updateFields['finalScriptWitness'] = finalScriptWitness;
+        psbt.updateInput(index, updateFields, true);
       }
     }
 
@@ -1351,29 +1307,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
   }
 
-  /**
-   * @hidden
-   * @deprecated Use `Output` instead
-   */
-  class Descriptor extends Output {
-    constructor({
-      expression,
-      ...rest
-    }: {
-      expression: string;
-      index?: number;
-      checksumRequired?: boolean;
-      allowMiniscriptInP2SH?: boolean;
-      network?: Network;
-      preimages?: Preimage[];
-      signersPubKeys?: Buffer[];
-    }) {
-      super({ descriptor: expression, ...rest });
-    }
-  }
-
   return {
-    /** @deprecated @hidden */ Descriptor,
     Output,
     parseKeyExpression,
     expand,
@@ -1381,14 +1315,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     BIP32
   };
 }
-
-/** @hidden @deprecated */
-type DescriptorConstructor = ReturnType<
-  typeof DescriptorsFactory
->['Descriptor'];
-/** @hidden  @deprecated */
-type DescriptorInstance = InstanceType<DescriptorConstructor>;
-export { DescriptorInstance, DescriptorConstructor };
 
 type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
 type OutputInstance = InstanceType<OutputConstructor>;

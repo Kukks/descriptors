@@ -75,15 +75,12 @@ export function toBtcSignerNetwork(network: Network) {
 // ---- Payment ----
 
 /**
- * Payment interface compatible with both old bitcoinjs-lib and new btc-signer.
- * `output` is an alias for `script` for backward compatibility.
+ * Payment interface compatible with btc-signer.
  */
 export interface Payment {
   type?: string;
   address?: string;
   script?: Buffer;
-  /** @deprecated Use script instead */
-  output?: Buffer;
   redeem?: Payment;
   witness?: Buffer[];
   input?: Buffer;
@@ -96,17 +93,13 @@ export interface Payment {
 
 /**
  * Convert a btc-signer payment result to our Payment interface.
- * btc-signer uses `script` for the output script; the old API used `output`.
- * We set both for compatibility.
  */
 export function toPayment(result: Record<string, unknown>): Payment {
   const p: Payment = {};
   if (result['type'] !== undefined) p.type = result['type'] as string;
   if (result['address'] !== undefined) p.address = result['address'] as string;
   if (result['script'] !== undefined) {
-    const s = Buffer.from(result['script'] as Uint8Array);
-    p.script = s;
-    p.output = s; // compat alias
+    p.script = Buffer.from(result['script'] as Uint8Array);
   }
   if (result['hash'] !== undefined) p.hash = Buffer.from(result['hash'] as Uint8Array);
   if (result['redeemScript'] !== undefined) p.redeemScript = Buffer.from(result['redeemScript'] as Uint8Array);

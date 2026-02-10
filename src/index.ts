@@ -2,50 +2,15 @@
 // Distributed under the MIT software license
 
 export type { KeyInfo, Expansion } from './types.js';
-import type { PsbtLike } from './psbt.js';
-import type { OutputInstance } from './descriptors.js';
-export type { DescriptorInstance, OutputInstance } from './descriptors.js';
+export type { OutputInstance } from './descriptors.js';
 export {
   DescriptorsFactory,
-  DescriptorConstructor,
   OutputConstructor
 } from './descriptors.js';
 export { DescriptorChecksum as checksum } from './checksum.js';
 
 import * as signers from './signers.js';
 export { signers };
-
-/**
- * @hidden @deprecated
- * To finalize the `psbt`, you can either call the method
- * `output.finalizePsbtInput({ index, psbt })` on each descriptor, passing as
- * arguments the `psbt` and its input `index`, or call this helper function:
- * `finalizePsbt({psbt, outputs })`. In the latter case, `outputs` is an
- * array of {@link _Internal_.Output | Output elements} ordered in the array by
- * their respective input index in the `psbt`.
- */
-function finalizePsbt({
-  psbt,
-  outputs,
-  descriptors,
-  validate = true
-}: {
-  psbt: PsbtLike;
-  outputs?: OutputInstance[];
-  /** @deprecated use outputs */
-  descriptors?: OutputInstance[];
-  validate?: boolean | undefined;
-}) {
-  if (descriptors && outputs)
-    throw new Error(`descriptors param has been deprecated`);
-  outputs = descriptors || outputs;
-  if (!outputs) throw new Error(`outputs not provided`);
-  outputs.forEach((output, inputIndex) =>
-    output.finalizePsbtInput({ index: inputIndex, psbt, validate })
-  );
-}
-
-export { finalizePsbt };
 
 export { keyExpressionBIP32 } from './keyExpressions.js';
 import * as scriptExpressions from './scriptExpressions.js';

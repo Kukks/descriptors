@@ -7,11 +7,12 @@
 
 //npm run test:integration
 
-import { Psbt } from 'bitcoinjs-lib';
+import { Transaction } from '@scure/btc-signer';
+import { hex as hexModule } from '@scure/base';
 import { mnemonicToSeedSync } from 'bip39';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 const { encode: afterEncode } = require('bip65');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
@@ -129,7 +130,7 @@ const keys: {
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
-        const psbt = new Psbt();
+        const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
         const inputFinalizer = output.updatePsbtAsInput({ psbt, vout, txHex });
         //There are different ways to add an output:
         //import { address } from 'bitcoinjs-lib';
@@ -143,12 +144,11 @@ const keys: {
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         inputFinalizer({ psbt });
-        const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.
         await regtestUtils.mine(BLOCKS - 1);
         try {
-          await regtestUtils.broadcast(spendTx.toHex());
+          await regtestUtils.broadcast(hexModule.encode(psbt.extract()));
           throw new Error(`Error: mining BLOCKS - 1 did not fail`);
         } catch (error) {
           const expectedErrorMessage =
@@ -162,26 +162,26 @@ const keys: {
         }
         //Mine the last block needed
         await regtestUtils.mine(1);
-        await regtestUtils.broadcast(spendTx.toHex());
+        await regtestUtils.broadcast(hexModule.encode(psbt.extract()));
         await regtestUtils.verify({
-          txId: spendTx.getId(),
+          txId: psbt.id,
           address: FINAL_ADDRESS,
           vout: 0,
           value: FINAL_VALUE
         });
         //Verify the final locking and sequence depending on the branch
-        if (spendingBranch === '@afterKey' && spendTx.locktime !== after)
+        if (spendingBranch === '@afterKey' && psbt.lockTime !== after)
           throw new Error(`Error: final locktime was not correct`);
         if (
           spendingBranch === '@olderKey' &&
-          spendTx.ins[0]?.sequence !== older
+          psbt.getInput(0).sequence !== older
         )
           throw new Error(`Error: final sequence was not correct`);
         console.log(`\nDescriptor: ${descriptor}`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
-            psbt.locktime
-          }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
+            psbt.lockTime
+          }, input sequence: ${psbt.getInput(0)?.sequence?.toString(
             16
           )}, ${output
             .expand()
