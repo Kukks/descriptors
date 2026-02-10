@@ -1,54 +1,80 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { isTaprootInput } from 'bitcoinjs-lib/src/psbt/bip371';
-import { tapTweakHash } from 'bitcoinjs-lib/src/payments/bip341';
-import type { Psbt } from 'bitcoinjs-lib';
+import type { PsbtLike } from './psbt.js';
+import type { ECPairInterface, BIP32Interface } from './types.js';
+import { readUInt32BE } from './scriptUtils.js';
 
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
-import type { DescriptorInstance } from './descriptors';
-import {
-  importAndValidateLedgerBitcoin,
-  comparePolicies,
-  LedgerPolicy,
-  ledgerPolicyFromState,
-  ledgerPolicyFromStandard,
-  ledgerPolicyFromOutput,
-  LedgerState,
-  LedgerManager,
-  ledgerPolicyFromPsbtInput
-} from './ledger';
-import { applyPR2137 } from './applyPR2137';
-type DefaultDescriptorTemplate =
-  | 'pkh(@0/**)'
-  | 'sh(wpkh(@0/**))'
-  | 'wpkh(@0/**)'
-  | 'tr(@0/**)';
-declare class PartialSignature {
-  readonly pubkey: Buffer;
-  readonly signature: Buffer;
-  readonly tapleafHash?: Buffer;
-  constructor(pubkey: Buffer, signature: Buffer, tapleafHash?: Buffer);
+/**
+ * Adapts a BIP32Interface node to the HDKey interface expected by @scure/btc-signer.
+ * scure's Transaction.sign/signIdx auto-handle Taproot tweaking when given an HDKey.
+ */
+function toScureHDKey(node: BIP32Interface): {
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
+  fingerprint: number;
+  derive(path: string): ReturnType<typeof toScureHDKey>;
+  deriveChild(index: number): ReturnType<typeof toScureHDKey>;
+  sign(hash: Uint8Array): Uint8Array;
+} {
+  if (!node.privateKey)
+    throw new Error('Cannot create HDKey signer from neutered node');
+  return {
+    publicKey: node.publicKey,
+    privateKey: node.privateKey,
+    fingerprint: readUInt32BE(node.fingerprint),
+    derive(path: string) {
+      return toScureHDKey(node.derivePath(path));
+    },
+    deriveChild(index: number) {
+      return toScureHDKey(node.derive(index));
+    },
+    sign(hash: Uint8Array): Uint8Array {
+      return node.sign(hash);
+    }
+  };
 }
 
-function range(n: number): number[] {
-  return [...Array(n).keys()];
+/**
+ * Derives the private key from a BIP32 node using tapBip32Derivation info
+ * and signs the Taproot input directly with the raw private key.
+ * This is needed because @scure/btc-signer's signIdx HDKey path only checks
+ * bip32Derivation, not tapBip32Derivation.
+ */
+function signTapBip32(
+  psbt: PsbtLike,
+  index: number,
+  masterNode: BIP32Interface
+): boolean {
+  const input = psbt.getInput(index);
+  const tapBip32 = input.tapBip32Derivation as
+    | [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }][]
+    | undefined;
+  if (!tapBip32 || !tapBip32.length) return false;
+  const fp = readUInt32BE(masterNode.fingerprint);
+  let signed = false;
+  for (const [, { der }] of tapBip32) {
+    if (der.fingerprint !== fp) continue;
+    let node: BIP32Interface = masterNode;
+    for (const childIdx of der.path) {
+      node = node.derive(childIdx);
+    }
+    if (!node.privateKey)
+      throw new Error('Cannot sign: derived node has no private key');
+    psbt.signIdx(node.privateKey, index);
+    signed = true;
+  }
+  return signed;
 }
+
 /**
  * Signs a specific input of a PSBT with an ECPair.
  *
- * Unlike bitcoinjs-lib's native `psbt.signInput()`, this function automatically detects
- * if the input is a Taproot input and internally tweaks the key if needed.
- *
- * This behavior matches how `signInputBIP32` works, where the BIP32 node is automatically
- * tweaked for Taproot inputs. In contrast, bitcoinjs-lib's native implementation requires
- * manual pre-tweaking of ECPair signers for Taproot inputs.
- *
- * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+ * Uses @scure/btc-signer's signIdx which automatically handles
+ * Taproot key tweaking internally.
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
@@ -57,408 +83,91 @@ export function signInputECPair({
   index,
   ecpair
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   ecpair: ECPairInterface;
 }): void {
-  //psbt.signInput(index, ecpair); <- Replaced for the code below
-  //that can handle taproot inputs automatically.
-  //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
-  const input = psbt.data.inputs[index];
-  if (!input) throw new Error('Invalid index');
-  if (isTaprootInput(input)) {
-    // If script-path (tapLeafScript present) -> DO NOT TWEAK
-    if (input.tapLeafScript && input.tapLeafScript.length > 0)
-      psbt.signInput(index, ecpair);
-    else {
-      const hash = tapTweakHash(
-        Buffer.from(ecpair.publicKey.slice(1, 33)),
-        undefined
-      );
-      const tweakedEcpair = ecpair.tweak(hash);
-      psbt.signInput(index, tweakedEcpair);
-    }
-  } else psbt.signInput(index, ecpair);
+  if (!ecpair.privateKey) throw new Error('Missing private key');
+  psbt.signIdx(ecpair.privateKey, index);
 }
+
 /**
  * Signs all inputs of a PSBT with an ECPair.
  *
- * This function improves upon bitcoinjs-lib's native `psbt.signAllInputs()` by automatically
- * handling Taproot inputs. For each input, it detects if it's a Taproot input and internally
- * tweaks the key if needed.
- *
- * This creates consistency with the BIP32 signing methods (`signBIP32`/`signInputBIP32`),
- * which also automatically handle key tweaking for Taproot inputs. In contrast, bitcoinjs-lib's
- * native implementation requires users to manually pre-tweak ECPair signers for Taproot inputs.
- *
- * With this implementation, you can use a single ECPair to sign both Taproot and non-Taproot
- * inputs in the same PSBT, similar to how `signBIP32` allows using a common node for both types.
- *
- * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+ * Uses @scure/btc-signer's sign which automatically handles
+ * Taproot key tweaking internally.
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
 export function signECPair({
   psbt,
   ecpair
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   ecpair: ECPairInterface;
 }): void {
-  //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
-  //taptoot automatically.
-  //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
-  const results: boolean[] = [];
-  for (const index of range(psbt.data.inputs.length)) {
-    try {
-      signInputECPair({ psbt, index, ecpair });
-      results.push(true);
-    } catch (err) {
-      void err;
-      results.push(false);
-    }
-  }
-  if (results.every(v => v === false)) {
+  if (!ecpair.privateKey) throw new Error('Missing private key');
+  const signed = psbt.sign(ecpair.privateKey);
+  if (signed === 0) {
     throw new Error('No inputs were signed');
   }
 }
+
+/**
+ * Signs a specific input of a PSBT with a BIP32 node.
+ *
+ * Handles Taproot inputs via tapBip32Derivation, and non-Taproot via
+ * @scure/btc-signer's signIdx with an HDKey adapter.
+ *
+ * @param {Object} params - The parameters object
+ * @param {PsbtLike} params.psbt - The PSBT to sign
+ * @param {number} params.index - The input index to sign
+ * @param {BIP32Interface} params.node - The BIP32 node to sign with
+ */
 export function signInputBIP32({
   psbt,
   index,
   node
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   node: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
-  psbt.signInputHD(index, node);
+  if (!signTapBip32(psbt, index, node)) {
+    psbt.signIdx(toScureHDKey(node), index);
+  }
 }
 
+/**
+ * Signs all inputs of a PSBT with a BIP32 master node.
+ *
+ * First signs any Taproot inputs via tapBip32Derivation, then uses
+ * @scure/btc-signer's sign for remaining non-Taproot inputs.
+ *
+ * @param {Object} params - The parameters object
+ * @param {PsbtLike} params.psbt - The PSBT to sign
+ * @param {BIP32Interface} params.masterNode - The BIP32 master node to sign with
+ */
 export function signBIP32({
   psbt,
   masterNode
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   masterNode: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
-  psbt.signAllInputsHD(masterNode);
-}
-
-const ledgerSignaturesForInputIndex = (
-  index: number,
-  ledgerSignatures: [number, PartialSignature][]
-) =>
-  ledgerSignatures
-    .filter(([i]: [number, PartialSignature]) => i === index)
-    .map(([_i, partialSignature]: [number, PartialSignature]) => ({
-      pubkey: partialSignature.pubkey,
-      signature: partialSignature.signature
-    }));
-
-/**
- * Signs an input of the `psbt` where the keys are controlled by a Ledger
- * device.
- *
- * The function will throw an error if it's unable to sign the input.
- */
-export async function signInputLedger({
-  psbt,
-  index,
-  ledgerManager
-}: {
-  psbt: Psbt;
-  index: number;
-  ledgerManager: LedgerManager;
-}): Promise<void>;
-
-/**
- * @hidden
- */
-export async function signInputLedger({
-  psbt,
-  index,
-  descriptor,
-  ledgerClient,
-  ledgerState
-}: {
-  psbt: Psbt;
-  index: number;
-  descriptor: DescriptorInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-}): Promise<void>;
-
-/**
- * To be removed in v3.0 and replaced by a version that does not accept
- * descriptor
- * @overload
- */
-export async function signInputLedger({
-  psbt,
-  index,
-  descriptor,
-  ledgerClient,
-  ledgerState,
-  ledgerManager
-}: {
-  psbt: Psbt;
-  index: number;
-  descriptor?: DescriptorInstance;
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-}): Promise<void> {
-  if (!descriptor && !ledgerManager)
-    throw new Error(`ledgerManager not provided`);
-  if (descriptor && ledgerManager)
-    throw new Error(`Invalid usage: don't pass descriptor`);
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(
-      `Invalid usage: either ledgerManager or ledgerClient + ledgerState`
-    );
-  const output = descriptor;
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient) throw new Error(`ledgerManager not provided`);
-  if (!ledgerState) throw new Error(`ledgerManager not provided`);
-  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      ledgerClient
-    )) as typeof import('ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-
-  let ledgerSignatures;
-  if (ledgerManager) {
-    if (psbt.data.inputs[index]?.tapInternalKey)
-      throw new Error('Taproot inputs not yet supported for the Ledger device');
-    const policy = await ledgerPolicyFromPsbtInput({
-      psbt,
-      index,
-      ledgerManager
-    });
-    if (!policy)
-      throw new Error(`Error: the ledger cannot sign this pstb input`);
-    if (policy.policyName && policy.policyHmac && policy.policyId) {
-      //non-standard policy
-      const walletPolicy = new WalletPolicy(
-        policy.policyName,
-        policy.ledgerTemplate,
-        policy.keyRoots
-      );
-
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        walletPolicy,
-        policy.policyHmac
-      );
-    } else {
-      //standard policy
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        new DefaultWalletPolicy(
-          policy.ledgerTemplate as DefaultDescriptorTemplate,
-          policy.keyRoots[0]!
-        ),
-        null
-      );
-    }
-  } else {
-    if (!output) throw new Error(`outputs not provided`);
-    const result = await ledgerPolicyFromOutput({
-      output,
-      ledgerClient,
-      ledgerState
-    });
-    if (!result) throw new Error(`Error: output does not have a ledger input`);
-    const { ledgerTemplate, keyRoots } = result;
-
-    const standardPolicy = await ledgerPolicyFromStandard({
-      output,
-      ledgerClient,
-      ledgerState
-    });
-    if (standardPolicy) {
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        new DefaultWalletPolicy(
-          ledgerTemplate as DefaultDescriptorTemplate,
-          keyRoots[0]!
-        ),
-        null
-      );
-    } else {
-      const policy = await ledgerPolicyFromState({
-        output,
-        ledgerClient,
-        ledgerState
-      });
-      if (!policy || !policy.policyName || !policy.policyHmac)
-        throw new Error(`Error: the descriptor's policy is not registered`);
-      const walletPolicy = new WalletPolicy(
-        policy.policyName,
-        ledgerTemplate,
-        keyRoots
-      );
-
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        walletPolicy,
-        policy.policyHmac
-      );
-    }
+  let tapSigned = 0;
+  for (let i = 0; i < psbt.inputsLength; i++) {
+    if (signTapBip32(psbt, i, masterNode)) tapSigned++;
   }
-
-  //Add the signatures to the Psbt object using PartialSig format:
-  psbt.updateInput(index, {
-    partialSig: ledgerSignaturesForInputIndex(index, ledgerSignatures)
-  });
-}
-
-/**
- * Signs the inputs of the `psbt` where the keys are controlled by a Ledger
- * device.
- *
- * `signLedger` can sign multiple inputs of the same wallet policy in a single
- * pass by grouping inputs by their wallet policy type before the signing
- * process.
- *
- * The function will throw an error if it's unable to sign any input.
- */
-export async function signLedger({
-  psbt,
-  ledgerManager
-}: {
-  psbt: Psbt;
-  ledgerManager: LedgerManager;
-}): Promise<void>;
-
-/**
- * @hidden
- */
-export async function signLedger({
-  psbt,
-  descriptors,
-  ledgerClient,
-  ledgerState
-}: {
-  psbt: Psbt;
-  descriptors: DescriptorInstance[];
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-}): Promise<void>;
-
-/**
- * To be removed in v3.0 and replaced by a version that does not accept
- * descriptors
- * @overload
- */
-export async function signLedger({
-  psbt,
-  descriptors,
-  ledgerClient,
-  ledgerState,
-  ledgerManager
-}: {
-  psbt: Psbt;
-  descriptors?: DescriptorInstance[];
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-}): Promise<void> {
-  if (!descriptors && !ledgerManager)
-    throw new Error(`ledgerManager not provided`);
-  if (descriptors && ledgerManager)
-    throw new Error(`Invalid usage: don't pass descriptors`);
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(
-      `Invalid usage: either ledgerManager or ledgerClient + ledgerState`
-    );
-  const outputs = descriptors;
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient) throw new Error(`ledgerManager not provided`);
-  if (!ledgerState) throw new Error(`ledgerManager not provided`);
-  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      ledgerClient
-    )) as typeof import('ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-
-  const ledgerPolicies = [];
-  if (ledgerManager)
-    for (let index = 0; index < psbt.data.inputs.length; index++) {
-      if (psbt.data.inputs[index]?.tapInternalKey)
-        throw new Error(
-          'Taproot inputs not yet supported for the Ledger device'
-        );
-      const policy = await ledgerPolicyFromPsbtInput({
-        psbt,
-        index,
-        ledgerManager
-      });
-      if (policy) ledgerPolicies.push(policy);
-    }
-  else {
-    if (!outputs) throw new Error(`outputs not provided`);
-    for (const output of outputs) {
-      const policy =
-        (await ledgerPolicyFromState({ output, ledgerClient, ledgerState })) ||
-        (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }));
-      if (policy) ledgerPolicies.push(policy);
-    }
-    if (ledgerPolicies.length === 0)
-      throw new Error(`Error: there are no inputs which could be signed`);
+  let nonTapSigned = 0;
+  try {
+    nonTapSigned = psbt.sign(toScureHDKey(masterNode));
+  } catch (e) {
+    // sign() throws 'No inputs signed' when no bip32Derivation matches
   }
-  //cluster unique LedgerPolicies
-  const uniquePolicies: LedgerPolicy[] = [];
-  for (const policy of ledgerPolicies) {
-    if (
-      !uniquePolicies.find((uniquePolicy: LedgerPolicy) =>
-        comparePolicies(uniquePolicy, policy)
-      )
-    )
-      uniquePolicies.push(policy);
-  }
-
-  for (const uniquePolicy of uniquePolicies) {
-    let ledgerSignatures;
-    if (
-      uniquePolicy.policyName &&
-      uniquePolicy.policyHmac &&
-      uniquePolicy.policyId
-    ) {
-      //non-standard policy
-      const walletPolicy = new WalletPolicy(
-        uniquePolicy.policyName,
-        uniquePolicy.ledgerTemplate,
-        uniquePolicy.keyRoots
-      );
-
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        walletPolicy,
-        uniquePolicy.policyHmac
-      );
-    } else {
-      //standard policy
-      ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
-        new DefaultWalletPolicy(
-          uniquePolicy.ledgerTemplate as DefaultDescriptorTemplate,
-          uniquePolicy.keyRoots[0]!
-        ),
-        null
-      );
-    }
-
-    for (const [index, ,] of ledgerSignatures) {
-      psbt.updateInput(index, {
-        partialSig: ledgerSignaturesForInputIndex(index, ledgerSignatures)
-      });
-    }
+  if (tapSigned + nonTapSigned === 0) {
+    throw new Error('No inputs were signed');
   }
 }

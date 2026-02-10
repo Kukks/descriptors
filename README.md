@@ -44,7 +44,6 @@ To use this library (and accompanying libraries), you can install them using:
 ```bash
 npm install @bitcoinerlab/descriptors
 npm install @bitcoinerlab/miniscript
-npm install @bitcoinerlab/secp256k1
 ```
 
 The library can be split into four main parts:
@@ -56,13 +55,14 @@ The library can be split into four main parts:
 
 ### Output class
 
-The `Output` class is dynamically created by providing a cryptographic secp256k1 engine as shown below:
+The `Output` class is dynamically created by providing `ECPair` and `BIP32` factory APIs as shown below:
 
 ```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
 import * as descriptors from '@bitcoinerlab/descriptors';
-const { Output } = descriptors.DescriptorsFactory(ecc);
+const { Output } = descriptors.DescriptorsFactory({ ECPair, BIP32 });
 ```
+
+Here, `ECPair` and `BIP32` are implementations of the `ECPairAPI` and `BIP32API` interfaces respectively (e.g., from `ecpair` and `bip32` packages, or compatible implementations).
 
 Once set up, you can obtain an instance for an output, described by a descriptor such as a `wpkh`, as follows:
 
@@ -92,12 +92,12 @@ The `updatePsbtAsInput()` method is an essential part of the library, responsibl
 To call `updatePsbtAsInput()`, use the following syntax:
 
 ```javascript
-import { Psbt } from 'bitcoinjs-lib';
-const psbt = new Psbt();
+import { Transaction } from '@scure/btc-signer';
+const psbt = new Transaction();
 const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout, rbf });
 ```
 
-Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
+Here, `psbt` refers to an instance of the [`@scure/btc-signer` Transaction class](https://github.com/nicolo-ribaudo/scure-btc-signer) (which acts as a PSBT builder). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
 
 The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling `inputFinalizer()`. Detailed [explanations on the `inputFinalizer` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 
@@ -129,7 +129,7 @@ const result = output.expand();
 If you haven't instantiated the `Output` class or simply prefer a standalone utility, the `DescriptorsFactory` provides an `expand()` function that allows you to directly parse the descriptor. For a comprehensive understanding of all the function arguments, refer to [this reference](https://bitcoinerlab.com/modules/descriptors/api/functions/DescriptorsFactory.html#DescriptorsFactory). Here's how you can use it:
 
 ```javascript
-const { expand } = descriptors.DescriptorsFactory(ecc);
+const { expand } = descriptors.DescriptorsFactory({ ECPair, BIP32 });
 const result = expand({
   descriptor: "sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))"
 });
@@ -176,11 +176,11 @@ For signing operations, utilize the methods provided by the [`signers`](https://
 // For Ledger
 await signers.signLedger({ psbt, ledgerManager });
 
-// For BIP32 - https://github.com/bitcoinjs/bip32
+// For BIP32
 signers.signBIP32({ psbt, masterNode });
 
-// For ECPair - https://github.com/bitcoinjs/ecpair
-signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is an instance of the bitcoinjs-lib ECPairInterface
+// For ECPair
+signers.signECPair({ psbt, ecpair }); // Here, `ecpair` implements the ECPairInterface
 ```
 
 Detailed information on Ledger integration will be provided in subsequent sections.
@@ -227,8 +227,8 @@ When using BIP32-based descriptors, the following parameters are required for th
 
 ```javascript
 pkhBIP32(params: {
-  masterNode: BIP32Interface; //bitcoinjs-lib BIP32 - https://github.com/bitcoinjs/bip32
-  network?: Network; //A bitcoinjs-lib network
+  masterNode: BIP32Interface; // BIP32 HD key
+  network?: Network;
   account: number;
   change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
   index?: number | undefined | '*';
@@ -254,7 +254,7 @@ The parameters required for these functions are:
 
 ```javascript
 function keyExpressionBIP32({
-  masterNode: BIP32Interface; //bitcoinjs-lib BIP32 - https://github.com/bitcoinjs/bip32
+  masterNode: BIP32Interface; // BIP32 HD key
   originPath: string;
   change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
   index?: number | undefined | '*';

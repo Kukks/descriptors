@@ -6,11 +6,12 @@
 // @ts-nocheck
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 
-import { DescriptorsFactory } from '../dist';
-import { fixtures as customFixtures } from './fixtures/custom';
-import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
-import * as ecc from '@bitcoinerlab/secp256k1';
-const { Output, expand } = DescriptorsFactory(ecc);
+import { DescriptorsFactory } from '../dist/index.js';
+import { hex as hexModule } from '@scure/base';
+import { fixtures as customFixtures } from './fixtures/custom.js';
+import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore.js';
+import { ECPair, BIP32 } from './helpers/crypto.js';
+const { Output, expand } = DescriptorsFactory({ ECPair, BIP32 });
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {
@@ -47,7 +48,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.descriptor}`);
         if (fixture.script) {
-          expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
+          expect(hexModule.encode(descriptor.getScriptPubKey())).toEqual(
             fixture.script
           );
         }

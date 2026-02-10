@@ -12,12 +12,14 @@
   "keywords": [
     "bitcoin",
     "descriptors",
-    "bitcoinjs",
-    "miniscript"
+    "miniscript",
+    "scure",
+    "noble"
   ],
   "bugs": {
     "url": "https://github.com/bitcoinerlab/descriptors/issues"
   },
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
@@ -25,54 +27,42 @@
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
-    "preset": "@bitcoinerlab/configs"
+    "preset": "@bitcoinerlab/configs",
+    "extensionsToTreatAsEsm": [],
+    "transform": {}
   },
   "scripts": {
     "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
     "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
-    "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
-    "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
-    "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",
+    "build:src": "tsc --project tsconfig.src.json",
+    "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.cjs -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
+    "build:test": "npm run build:fixtures && tsc --project tsconfig.test.json --resolveJsonModule",
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js",
-    "test:integration:ledger": "npm run ensureTester && node test/integration/ledger.js",
-    "test:integration:deprecated": "npm run ensureTester && node test/integration/standardOutputs-deprecated.js && echo \"\n\n\" && node test/integration/miniscript-deprecated.js && echo \"\n\n\" && node test/integration/ledger-deprecated.js",
-    "test:unit": "jest",
+
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
-    "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
-    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:deprecated && npm run test:integration:ledger"
+    "prepublishOnly": "npm run test"
   },
   "files": [
     "dist"
   ],
-  "peerDependencies": {
-    "ledger-bitcoin": "^0.2.2"
-  },
-  "peerDependenciesMeta": {
-    "ledger-bitcoin": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@bitcoinerlab/configs": "^2.0.0",
-    "@ledgerhq/hw-transport-node-hid": "^6.27.12",
-    "@types/lodash.memoize": "^4.1.9",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
-    "ledger-bitcoin": "^0.2.2",
     "regtest-client": "^0.2.1",
     "yargs": "^17.7.2"
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^1.4.3",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
-    "bip32": "^4.0.0",
-    "bitcoinjs-lib": "^6.1.7",
-    "ecpair": "^2.1.0",
-    "lodash.memoize": "^4.1.2",
-    "varuint-bitcoin": "^1.1.2"
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/btc-signer": "^2.0.1"
   }
 }

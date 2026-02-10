@@ -1,7 +1,6 @@
-import { networks, Network } from 'bitcoinjs-lib';
-import type { LedgerState, LedgerManager } from './ledger';
-import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
-import type { BIP32Interface } from 'bip32';
+import { networks, Network } from './networks.js';
+import { keyExpressionBIP32 } from './keyExpressions.js';
+import type { BIP32Interface } from './types.js';
 
 function assertStandardKeyPath(keyPath: string) {
   // Regular expression to match "/change/index" or "/change/*" format
@@ -53,7 +52,7 @@ function standardExpressionsBIP32Maker(
     isPublic?: boolean;
   }) {
     const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
+      network.bech32 === networks.bitcoin.bech32 ? 0 : 1
     }'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = keyExpressionBIP32({
@@ -83,116 +82,3 @@ export const wpkhBIP32 = standardExpressionsBIP32Maker(
 );
 /** @function */
 export const trBIP32 = standardExpressionsBIP32Maker(86, 'tr(KEYEXPRESSION)');
-
-function standardExpressionsLedgerMaker(
-  purpose: number,
-  scriptTemplate: string
-) {
-  /**
-   * Computes the standard descriptor based on given parameters.
-   *
-   * You can define the output location either by:
-   * - Providing the full `keyPath` (e.g., "/0/2").
-   * OR
-   * - Specifying the `change` and `index` values separately (e.g., `{change:0, index:2}`).
-   *
-   * For ranged indexing, the `index` can be set as a wildcard '*'. For example:
-   * - `keyPath="/0/*"`
-   * OR
-   * - `{change:0, index:'*'}`.
-   */
-  async function standardScriptExpressionLedger({
-    ledgerManager,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerManager: LedgerManager;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
-  }): Promise<string>;
-  /** @hidden */
-  async function standardScriptExpressionLedger({
-    ledgerClient,
-    ledgerState,
-    network,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerClient: unknown;
-    ledgerState: LedgerState;
-    /** @default networks.bitcoin */
-    network?: Network;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
-  }): Promise<string>;
-  /** @overload */
-  async function standardScriptExpressionLedger({
-    ledgerClient,
-    ledgerState,
-    ledgerManager,
-    network,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerClient?: unknown;
-    ledgerState?: LedgerState;
-    ledgerManager?: LedgerManager;
-    network?: Network;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
-  }) {
-    if (ledgerManager && (ledgerClient || ledgerState))
-      throw new Error(`ledgerClient and ledgerState have been deprecated`);
-    if (ledgerManager && network)
-      throw new Error(`ledgerManager already includes the network object`);
-    if (!ledgerManager && !network) network = networks.bitcoin;
-    if (ledgerManager) ({ ledgerClient, ledgerState, network } = ledgerManager);
-    if (!ledgerClient || !ledgerState)
-      throw new Error(`Could not retrieve ledgerClient or ledgerState`);
-    const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
-    }'/${account}'`;
-    if (keyPath !== undefined) assertStandardKeyPath(keyPath);
-    const keyExpression = await keyExpressionLedger({
-      ledgerClient,
-      ledgerState,
-      originPath,
-      keyPath,
-      change,
-      index
-    });
-
-    return scriptTemplate.replace('KEYEXPRESSION', keyExpression);
-  }
-  return standardScriptExpressionLedger;
-}
-
-/** @function */
-export const pkhLedger = standardExpressionsLedgerMaker(
-  44,
-  'pkh(KEYEXPRESSION)'
-);
-/** @function */
-export const shWpkhLedger = standardExpressionsLedgerMaker(
-  49,
-  'sh(wpkh(KEYEXPRESSION))'
-);
-/** @function */
-export const wpkhLedger = standardExpressionsLedgerMaker(
-  84,
-  'wpkh(KEYEXPRESSION)'
-);
-/** @function */
-export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');

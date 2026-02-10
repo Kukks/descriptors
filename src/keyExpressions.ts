@@ -1,18 +1,13 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network } from 'bitcoinjs-lib';
-import type { ECPairAPI, ECPairInterface } from 'ecpair';
-import type { BIP32API, BIP32Interface } from 'bip32';
-import type { KeyInfo } from './types';
-import {
-  LedgerState,
-  LedgerManager,
-  getLedgerMasterFingerPrint,
-  getLedgerXpub
-} from './ledger';
+import { networks, Network } from './networks.js';
+import { hex } from '@scure/base';
+import { concatBytes } from '@scure/btc-signer/utils.js';
+import type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface } from './types.js';
+import type { KeyInfo } from './types.js';
 
-import * as RE from './re';
+import * as RE from './re.js';
 
 const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {
@@ -74,10 +69,10 @@ export function parseKeyExpression({
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
-  let pubkey: Buffer | undefined; //won't be computed for ranged keyExpressions
+  let pubkey: Uint8Array | undefined; //won't be computed for ranged keyExpressions
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
-  let masterFingerprint: Buffer | undefined;
+  let masterFingerprint: Uint8Array | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
   let path: string | undefined;
@@ -116,7 +111,7 @@ export function parseKeyExpression({
         throw new Error(
           `Error: masterFingerprint ${masterFingerprintHex} invalid for keyExpression: ${keyExpression}`
         );
-      masterFingerprint = Buffer.from(masterFingerprintHex, 'hex');
+      masterFingerprint = hex.decode(masterFingerprintHex);
     }
   }
 
@@ -125,10 +120,10 @@ export function parseKeyExpression({
   let mPubKey, mWIF, mXpubKey, mXprvKey;
   //match pubkey:
   if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(rePubKey))) !== null) {
-    pubkey = Buffer.from(mPubKey[0], 'hex');
+    pubkey = hex.decode(mPubKey[0]);
     if (isTaproot && pubkey.length === 32)
       //convert the xonly point to a compressed point assuming even parity
-      pubkey = Buffer.concat([Buffer.from([0x02]), pubkey]);
+      pubkey = concatBytes(Uint8Array.from([0x02]), pubkey);
 
     ecpair = ECPair.fromPublicKey(pubkey, { network });
     //Validate the pubkey (compressed or uncompressed)
@@ -153,6 +148,14 @@ export function parseKeyExpression({
     ecpair = ECPair.fromWIF(mWIF[0], network);
     //fromWIF will throw if the wif is not valid
     pubkey = ecpair.publicKey;
+    //Check segwit requires compressed keys
+    if (
+      typeof isSegwit === 'boolean' &&
+      isSegwit &&
+      pubkey.length !== 33
+    ) {
+      throw new Error(`Error: invalid pubkey`);
+    }
     //match xpub:
   } else if (
     (mXpubKey = actualKey.match(RE.anchorStartAndEnd(RE.reXpubKey))) !== null
@@ -232,87 +235,6 @@ function assertChangeIndexKeyPath({
 }
 
 /**
- * Constructs a key expression string for a Ledger device from the provided
- * components.
- *
- * This function assists in crafting key expressions tailored for Ledger
- * hardware wallets. It fetches the master fingerprint and xpub for a
- * specified origin path and then combines them with the input parameters.
- *
- * For detailed understanding and examples of terms like `originPath`,
- * `change`, and `keyPath`, refer to the documentation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}, which consists
- * of the reverse procedure.
- *
- * @returns {string} - The formed key expression for the Ledger device.
- */
-export async function keyExpressionLedger({
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerManager: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @hidden */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @overload */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}) {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
-  assertChangeIndexKeyPath({ change, index, keyPath });
-
-  const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerClient,
-    ledgerState
-  });
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerClient, ledgerState });
-
-  const keyRoot = `${origin}${xpub}`;
-  if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
-  else return `${keyRoot}/${change}/${index}`;
-}
-
-/**
  * Constructs a key expression string from its constituent components.
  *
  * This function essentially performs the reverse operation of
@@ -341,7 +263,7 @@ export function keyExpressionBIP32({
 }) {
   assertChangeIndexKeyPath({ change, index, keyPath });
   const masterFingerprint = masterNode.fingerprint;
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
+  const origin = `[${hex.encode(masterFingerprint)}${originPath}]`;
   const xpub = isPublic
     ? masterNode.derivePath(`m${originPath}`).neutered().toBase58().toString()
     : masterNode.derivePath(`m${originPath}`).toBase58().toString();

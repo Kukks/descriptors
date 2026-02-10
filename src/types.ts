@@ -1,9 +1,78 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
-import type { Payment, Network } from 'bitcoinjs-lib';
+import type { Network } from './networks.js';
+import type { P2Ret } from '@scure/btc-signer/payment.js';
+
+// ---- Replacement interfaces for ecpair / bip32 ----
+
+/**
+ * Interface for an EC key pair (replaces ecpair's ECPairInterface).
+ * Only the fields used by this library are included.
+ */
+export interface ECPairInterface {
+  publicKey: Uint8Array;
+  privateKey?: Uint8Array;
+  compressed: boolean;
+  network?: Network;
+  sign(hash: Uint8Array): Uint8Array;
+  verify(hash: Uint8Array, signature: Uint8Array): boolean;
+  toWIF(): string;
+  tweak(t: Uint8Array): ECPairInterface;
+}
+
+/**
+ * API for creating EC key pairs (replaces ecpair's ECPairAPI).
+ */
+export interface ECPairAPI {
+  fromPublicKey(publicKey: Uint8Array, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  fromPrivateKey(privateKey: Uint8Array, options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  fromWIF(wif: string, network?: Network | Network[]): ECPairInterface;
+  makeRandom(options?: { network?: Network; compressed?: boolean }): ECPairInterface;
+  isPoint(p: Uint8Array): boolean;
+}
+
+/**
+ * Interface for a BIP32 HD key (replaces bip32's BIP32Interface).
+ * Only the fields used by this library are included.
+ */
+export interface BIP32Interface {
+  publicKey: Uint8Array;
+  privateKey?: Uint8Array;
+  chainCode: Uint8Array;
+  fingerprint: Uint8Array;
+  depth: number;
+  index: number;
+  parentFingerprint: number;
+  network: Network;
+  derivePath(path: string): BIP32Interface;
+  derive(index: number): BIP32Interface;
+  deriveHardened(index: number): BIP32Interface;
+  neutered(): BIP32Interface;
+  toBase58(): string;
+  sign(hash: Uint8Array): Uint8Array;
+  verify(hash: Uint8Array, signature: Uint8Array): boolean;
+  isNeutered(): boolean;
+  toWIF(): string;
+}
+
+/**
+ * API for creating BIP32 keys (replaces bip32's BIP32API).
+ */
+export interface BIP32API {
+  fromBase58(base58: string, network?: Network): BIP32Interface;
+  fromPublicKey(publicKey: Uint8Array, chainCode: Uint8Array, network?: Network): BIP32Interface;
+  fromPrivateKey(privateKey: Uint8Array, chainCode: Uint8Array, network?: Network): BIP32Interface;
+  fromSeed(seed: Uint8Array, network?: Network): BIP32Interface;
+}
+
+/**
+ * PartialSig (replaces bip174's PartialSig)
+ */
+export interface PartialSig {
+  pubkey: Uint8Array;
+  signature: Uint8Array;
+}
 
 /**
  * Preimage
@@ -33,10 +102,10 @@ export type TimeConstraints = {
  */
 export type KeyInfo = {
   keyExpression: string;
-  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
+  pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
   ecpair?: ECPairInterface;
   bip32?: BIP32Interface;
-  masterFingerprint?: Buffer;
+  masterFingerprint?: Uint8Array;
   originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
   keyPath?: string; //The path from the xpub/xprv root
   path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
@@ -118,9 +187,9 @@ export interface TinySecp256k1Interface {
  */
 export type Expansion = {
   /**
-   * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
+   * The corresponding Payment for the provided expression, if applicable.
    */
-  payment?: Payment;
+  payment?: P2Ret;
 
   /**
    * The expanded descriptor expression.
@@ -159,12 +228,12 @@ export type Expansion = {
   /**
    * The redeem script for the descriptor, if applicable.
    */
-  redeemScript?: Buffer;
+  redeemScript?: Uint8Array;
 
   /**
    * The witness script for the descriptor, if applicable.
    */
-  witnessScript?: Buffer;
+  witnessScript?: Uint8Array;
 
   /**
    * Whether the descriptor is a ranged-descriptor.

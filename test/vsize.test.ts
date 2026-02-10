@@ -7,13 +7,14 @@
 // Note that the fixtures are generated using @bitcoinerlab/coinselect using
 // test/tools
 
-import { networks, Psbt } from 'bitcoinjs-lib';
-import { DescriptorsFactory, OutputInstance } from '../dist';
-import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
-import * as secp256k1 from '@bitcoinerlab/secp256k1';
-const { Output } = DescriptorsFactory(secp256k1);
-import type { PartialSig } from 'bip174/src/lib/interfaces';
-import { encodingLength } from 'varuint-bitcoin';
+import { Transaction } from '@scure/btc-signer';
+import { base64, hex as hexModule } from '@scure/base';
+import { ECPair, BIP32 } from './helpers/crypto.js';
+import { DescriptorsFactory, OutputInstance } from '../dist/index.js';
+import fixturesVsize from './fixtures/vsize.json' with { type: 'json' };
+import type { PartialSig } from '../src/types.js';
+import { varintEncodingLength } from '../src/scriptUtils.js';
+const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 
 const isSegwitTx = (inputs: Array<OutputInstance>) =>
   inputs.some(input => input.isSegwit());
@@ -46,13 +47,20 @@ function vsize(
   if (isSegwitTxValue) totalWeight += 2;
 
   totalWeight += 8 * 4;
-  totalWeight += encodingLength(inputs.length) * 4;
-  totalWeight += encodingLength(outputs.length) * 4;
+  totalWeight += varintEncodingLength(inputs.length) * 4;
+  totalWeight += varintEncodingLength(outputs.length) * 4;
 
   return Math.ceil(totalWeight / 4);
 }
 
-const network = networks.regtest;
+const network = {
+  messagePrefix: '\x18Bitcoin Signed Message:\n',
+  bech32: 'bcrt',
+  bip32: { public: 0x043587cf, private: 0x04358394 },
+  pubKeyHash: 0x6f,
+  scriptHash: 0xc4,
+  wif: 0xef
+};
 
 interface TransactionFixture {
   fixture: string;
@@ -84,7 +92,7 @@ describe('vsize', () => {
           const signersPubKeys =
             'signersPubKeys' in input &&
             input.signersPubKeys.map((hexString: string) =>
-              Buffer.from(hexString, 'hex')
+              hexModule.decode(hexString)
             );
           return new Output({
             allowMiniscriptInP2SH: true,
@@ -102,12 +110,12 @@ describe('vsize', () => {
             })
         );
 
-        const psbt = Psbt.fromBase64(fixture.psbt);
+        const psbt = Transaction.fromPSBT(base64.decode(fixture.psbt), { allowUnknownOutputs: true, disableScriptCheck: true });
         // Deserialize signaturesPerInput
         const signaturesPerInput = fixture.signaturesPerInput.map(signatures =>
           signatures.map(sig => ({
-            pubkey: Buffer.from(sig.pubkey, 'hex'),
-            signature: Buffer.from(sig.signature, 'hex')
+            pubkey: hexModule.decode(sig.pubkey),
+            signature: hexModule.decode(sig.signature)
           }))
         );
 
@@ -123,7 +131,7 @@ describe('vsize', () => {
         // Check if the fixture size using signatures is exactly the
         // same as the signed one:
         if (txSize !== expectedSize)
-          console.error(psbt.extractTransaction().toHex());
+          console.error(hexModule.encode(psbt.extract()));
         expect(txSize).toBe(expectedSize);
 
         // Check if the best guess fixture size is within the expected range:

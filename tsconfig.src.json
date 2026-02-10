@@ -1,0 +1,9 @@
+{
+  "extends": "./node_modules/@bitcoinerlab/configs/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  },
+  "include": ["src/**/*.ts"]
+}

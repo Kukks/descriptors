@@ -1,17 +1,23 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
+
 //npm run test:integration
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { Transaction } from '@scure/btc-signer';
+import { hex as hexModule } from '@scure/base';
 import { mnemonicToSeedSync } from 'bip39';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 const { encode: afterEncode } = require('bip65');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
+import { ECPair, BIP32, networks } from '../helpers/crypto.js';
 const BLOCKS = 5;
 const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
@@ -26,12 +32,11 @@ console.log(
   `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
 );
 
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/index.js';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Output } = DescriptorsFactory({ ECPair, BIP32 });
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();
@@ -75,7 +80,7 @@ const keys: {
         //spendingBranch is either @olderKey or @afterKey.
         //Use signersPubKeys in Descriptor's constructor to account for this
         let miniscript = expandedMiniscript;
-        const signersPubKeys: Buffer[] = [];
+        const signersPubKeys: Uint8Array[] = [];
         for (const key in keys) {
           const keyValue = keys[key];
           if (!keyValue) throw new Error();
@@ -97,7 +102,7 @@ const keys: {
             } else {
               miniscript = miniscript.replace(
                 new RegExp(key, 'g'),
-                ecpair.publicKey.toString('hex')
+                hexModule.encode(ecpair.publicKey)
               );
 
               signersPubKeys.push(ecpair.publicKey);
@@ -106,7 +111,7 @@ const keys: {
             //For the non spending branch we can simply use the pubKey as key expressions
             miniscript = miniscript.replace(
               new RegExp(key, 'g'),
-              pubkey.toString('hex')
+              hexModule.encode(pubkey)
             );
           }
         }
@@ -121,11 +126,11 @@ const keys: {
         });
 
         const { txId, vout } = await regtestUtils.faucetComplex(
-          output.getScriptPubKey(),
+          Buffer.from(output.getScriptPubKey()),
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
-        const psbt = new Psbt();
+        const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
         const inputFinalizer = output.updatePsbtAsInput({ psbt, vout, txHex });
         //There are different ways to add an output:
         //import { address } from 'bitcoinjs-lib';
@@ -139,12 +144,11 @@ const keys: {
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         inputFinalizer({ psbt });
-        const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.
         await regtestUtils.mine(BLOCKS - 1);
         try {
-          await regtestUtils.broadcast(spendTx.toHex());
+          await regtestUtils.broadcast(hexModule.encode(psbt.extract()));
           throw new Error(`Error: mining BLOCKS - 1 did not fail`);
         } catch (error) {
           const expectedErrorMessage =
@@ -158,26 +162,26 @@ const keys: {
         }
         //Mine the last block needed
         await regtestUtils.mine(1);
-        await regtestUtils.broadcast(spendTx.toHex());
+        await regtestUtils.broadcast(hexModule.encode(psbt.extract()));
         await regtestUtils.verify({
-          txId: spendTx.getId(),
+          txId: psbt.id,
           address: FINAL_ADDRESS,
           vout: 0,
           value: FINAL_VALUE
         });
         //Verify the final locking and sequence depending on the branch
-        if (spendingBranch === '@afterKey' && spendTx.locktime !== after)
+        if (spendingBranch === '@afterKey' && psbt.lockTime !== after)
           throw new Error(`Error: final locktime was not correct`);
         if (
           spendingBranch === '@olderKey' &&
-          spendTx.ins[0]?.sequence !== older
+          psbt.getInput(0).sequence !== older
         )
           throw new Error(`Error: final sequence was not correct`);
         console.log(`\nDescriptor: ${descriptor}`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
-            psbt.locktime
-          }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
+            psbt.lockTime
+          }, input sequence: ${psbt.getInput(0)?.sequence?.toString(
             16
           )}, ${output
             .expand()

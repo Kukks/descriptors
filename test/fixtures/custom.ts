@@ -23,7 +23,32 @@
 //console.log(descsum_create(`wpkh([9a6a2580/84'/1'/180']tpubDCMRAYcH71GibuLuWcDkwmmY1gXkXhf162QuEHxkMpZPSi7xck2eGQ6MRGKxNTeY8P1FiFTPCLA5x7qZpFx84fnnrNQFpSnUCwd1nPG8Mk9/0/*)`));
 //console.log(descsum_check('addr(mkmZxiEcEd8ZqjQWVZuC6so5dFMKEFpN2j)#dp90etnw'));
 //console.log(descsum_check('addr(mkmZxiEcEd8ZqjQWVZuC6so5dFMKEFpN2j)#02wpgw69'));
-import { networks } from 'bitcoinjs-lib';
+const networks = {
+  bitcoin: {
+    messagePrefix: '\x18Bitcoin Signed Message:\n',
+    bech32: 'bc',
+    bip32: { public: 0x0488b21e, private: 0x0488ade4 },
+    pubKeyHash: 0x00,
+    scriptHash: 0x05,
+    wif: 0x80
+  },
+  testnet: {
+    messagePrefix: '\x18Bitcoin Signed Message:\n',
+    bech32: 'tb',
+    bip32: { public: 0x043587cf, private: 0x04358394 },
+    pubKeyHash: 0x6f,
+    scriptHash: 0xc4,
+    wif: 0xef
+  },
+  regtest: {
+    messagePrefix: '\x18Bitcoin Signed Message:\n',
+    bech32: 'bcrt',
+    bip32: { public: 0x043587cf, private: 0x04358394 },
+    pubKeyHash: 0x6f,
+    scriptHash: 0xc4,
+    wif: 0xef
+  }
+};
 export const fixtures = {
   valid: [
     {
