@@ -1268,7 +1268,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           throw new Error(
             `Error: input should have either witnessUtxo or nonWitnessUtxo`
           );
-        const tx = btc.Transaction.fromRaw(input.nonWitnessUtxo);
+        const tx = btc.Transaction.fromRaw(input.nonWitnessUtxo, {
+          allowUnknownOutputs: true,
+          allowUnknownInputs: true
+        });
         const out = tx.getOutput(vout);
         if (!out || !out.script) throw new Error(`Error: utxo should exist`);
         scriptPubKey = Buffer.from(out.script);
