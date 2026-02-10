@@ -1,7 +1,21 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import memoize from 'lodash.memoize';
+/** Simple memoize: caches results keyed by an optional resolver. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function memoize<T extends (...args: any[]) => any>(
+  fn: T,
+  resolver?: (...args: Parameters<T>) => string
+): T {
+  const cache = new Map<string, ReturnType<T>>();
+  return function (this: unknown, ...args: Parameters<T>): ReturnType<T> {
+    const key = resolver ? resolver(...args) : String(args[0]);
+    if (cache.has(key)) return cache.get(key)!;
+    const result = fn.apply(this, args);
+    cache.set(key, result);
+    return result;
+  } as T;
+}
 import * as btc from '@scure/btc-signer';
 import type { P2Ret } from '@scure/btc-signer/payment.js';
 

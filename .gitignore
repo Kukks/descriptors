@@ -5,7 +5,12 @@ node_modules/
 dist/
 docs/
 webdocs/
+src/**/*.js
+src/**/*.d.ts
 test/**/*.js
 test/**/*.d.ts
 !test/tools/generateBitcoinCoreFixtures.js
 .aider*
+PLAN.md
+jest-config-dump.txt
+nul
