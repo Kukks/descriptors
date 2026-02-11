@@ -39,6 +39,7 @@ import type {
   ExpansionMap,
   ParseKeyExpression
 } from './types.js';
+import { nobleECPair, scureBIP32 } from './adapters.js';
 
 import { computeFinalScripts, updatePsbt } from './psbt.js';
 import type { PsbtLike } from './psbt.js';
@@ -237,15 +238,16 @@ function parseSortedMulti(inner: string) {
  * These are compatible interfaces for managing BIP32 keys and
  * public/private key pairs respectively.
  *
- * @param {Object} params - An object with `ECPair` and `BIP32` factories.
+ * @param {Object} params - An object with optional `ECPair` and `BIP32` factories.
+ * When omitted, built-in adapters using @noble/curves and @scure/bip32 are used.
  */
 export function DescriptorsFactory({
-  ECPair,
-  BIP32
+  ECPair = nobleECPair,
+  BIP32 = scureBIP32
 }: {
-  ECPair: ECPairAPI;
-  BIP32: BIP32API;
-}) {
+  ECPair?: ECPairAPI;
+  BIP32?: BIP32API;
+} = {}) {
   /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
    */
