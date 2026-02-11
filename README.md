@@ -6,12 +6,13 @@ This library parses and creates Bitcoin Miniscript Descriptors and generates Par
 
 ## Differences from upstream
 
-This fork migrates the entire library from `bitcoinjs-lib` to the [`@scure/btc-signer`](https://github.com/nicolo-ribaudo/scure-btc-signer) and [`@noble`](https://github.com/nicolo-ribaudo/noble-curves) ecosystem. Key differences:
+This fork migrates the entire library from `bitcoinjs-lib` to the [`@scure/btc-signer`](https://github.com/nicolo-ribaudo/scure-btc-signer) and [`@noble`](https://github.com/paulmillr/noble-curves) ecosystem. Key differences:
 
 - **`Buffer` replaced with `Uint8Array`** across the entire public API. All methods that previously returned or accepted `Buffer` now use `Uint8Array`. This is a **breaking change**.
-- **Dependencies replaced**: `bitcoinjs-lib`, `ecpair`, `bip32`, `tiny-secp256k1` are no longer used. The library now depends on `@scure/btc-signer`, `@scure/bip32`, `@noble/curves`, `@noble/hashes`, and `@scure/base`.
+- **Dependencies replaced**: `bitcoinjs-lib`, `ecpair`, `bip32`, `tiny-secp256k1` are no longer used. The library now depends on [`@scure/btc-signer`](https://github.com/nicolo-ribaudo/scure-btc-signer), [`@scure/bip32`](https://github.com/nicolo-ribaudo/scure-bip32), [`@noble/curves`](https://github.com/paulmillr/noble-curves), [`@noble/hashes`](https://github.com/paulmillr/noble-hashes), and [`@scure/base`](https://github.com/nicolo-ribaudo/scure-base).
+- **Built-in adapters**: Ships `nobleECPair` and `scureBIP32` adapters — no more boilerplate. `DescriptorsFactory()` works with zero arguments.
 - **PSBT class**: Uses `Transaction` from `@scure/btc-signer` instead of `Psbt` from `bitcoinjs-lib`.
-- **Ledger support removed**: The `ledger` module and all Ledger-related functions (`signLedger`, `keyExpressionLedger`, `pkhLedger`, `shWpkhLedger`, `wpkhLedger`, etc.) have been removed.
+- **Ledger support removed**: The `ledger` module and all Ledger-related functions have been removed.
 - **`lodash.memoize` removed**: Replaced with an inline memoize helper.
 - **Package renamed** from `@bitcoinerlab/descriptors` to `@kukks/bitcoin-descriptors`.
 
@@ -22,15 +23,52 @@ npm install @kukks/bitcoin-descriptors
 npm install @bitcoinerlab/miniscript
 ```
 
+## Quick Start
+
+```typescript
+import { DescriptorsFactory } from '@kukks/bitcoin-descriptors';
+
+// Zero-config — uses built-in @noble/curves + @scure/bip32 adapters
+const { Output, expand } = DescriptorsFactory();
+
+const output = new Output({
+  descriptor: 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)'
+});
+
+console.log(output.getAddress());
+```
+
+Or use the pre-built default factory:
+
+```typescript
+import { defaultFactory } from '@kukks/bitcoin-descriptors';
+
+const { Output } = defaultFactory;
+```
+
+### Bring your own adapters
+
+If you need custom `ECPairAPI` or `BIP32API` implementations, you can still pass them explicitly:
+
+```typescript
+import { DescriptorsFactory } from '@kukks/bitcoin-descriptors';
+import type { ECPairAPI, BIP32API } from '@kukks/bitcoin-descriptors';
+
+const { Output } = DescriptorsFactory({ ECPair: myECPair, BIP32: myBIP32 });
+```
+
+The built-in adapters are also available as standalone exports:
+
+```typescript
+import { nobleECPair, scureBIP32 } from '@kukks/bitcoin-descriptors';
+```
+
 ## Features
 
 - Parses and creates [Bitcoin Descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) (including those based on the [Miniscript language](https://bitcoinerlab.com/modules/miniscript)).
 - Generates Partially Signed Bitcoin Transactions (PSBTs).
 - Provides PSBT finalizers and signers for single-signature and BIP32 wallets.
-
-## Concepts
-
-This library has two main capabilities related to Bitcoin descriptors. Firstly, it can generate `addresses` and `scriptPubKeys` from descriptors. These `addresses` and `scriptPubKeys` can be used to receive funds from other parties. Secondly, the library is able to sign transactions and spend unspent outputs described by those same descriptors. In order to do this, the descriptors must first be set into a PSBT.
+- Ships built-in adapters for `@noble/curves` and `@scure/bip32` — zero boilerplate needed.
 
 <details>
   <summary>Concepts</summary>
@@ -61,21 +99,15 @@ The library can be split into three main parts:
 
 ### Output class
 
-The `Output` class is dynamically created by providing `ECPair` and `BIP32` factory APIs:
+The `Output` class is created via `DescriptorsFactory`:
 
-```javascript
-import * as descriptors from '@kukks/bitcoin-descriptors';
-const { Output } = descriptors.DescriptorsFactory({ ECPair, BIP32 });
-```
+```typescript
+import { DescriptorsFactory } from '@kukks/bitcoin-descriptors';
 
-Here, `ECPair` and `BIP32` are implementations of the `ECPairAPI` and `BIP32API` interfaces. These interfaces now use `Uint8Array` instead of `Buffer` for all binary data (public keys, private keys, signatures, etc.).
+const { Output } = DescriptorsFactory();
 
-Once set up, you can obtain an instance for an output:
-
-```javascript
 const wpkhOutput = new Output({
-  descriptor:
-    'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)'
+  descriptor: 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)'
 });
 ```
 
@@ -83,20 +115,21 @@ For miniscript-based descriptors, the `signersPubKeys` parameter in the construc
 
 The `Output` class offers various helpful methods, including `getAddress()`, `getScriptPubKey()` (returns `Uint8Array`), `expand()`, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
 
- The library supports a wide range of descriptor types, including:
- - Pay-to-Public-Key-Hash (P2PKH): `pkh(KEY)`
- - Pay-to-Witness-Public-Key-Hash (P2WPKH): `wpkh(KEY)`
- - Pay-to-Script-Hash (P2SH): `sh(SCRIPT)`
- - Pay-to-Witness-Script-Hash (P2WSH): `wsh(SCRIPT)`
- - Pay-to-Taproot (P2TR) with single key: `tr(KEY)`
- - Address-based descriptors: `addr(ADDRESS)`, including Taproot addresses
+The library supports a wide range of descriptor types, including:
+- Pay-to-Public-Key-Hash (P2PKH): `pkh(KEY)`
+- Pay-to-Witness-Public-Key-Hash (P2WPKH): `wpkh(KEY)`
+- Pay-to-Script-Hash (P2SH): `sh(SCRIPT)`
+- Pay-to-Witness-Script-Hash (P2WSH): `wsh(SCRIPT)`
+- Pay-to-Taproot (P2TR) with single key: `tr(KEY)`
+- Address-based descriptors: `addr(ADDRESS)`, including Taproot addresses
 
 #### Working with PSBTs
 
 This library uses `Transaction` from `@scure/btc-signer` as the PSBT class:
 
-```javascript
+```typescript
 import { Transaction } from '@scure/btc-signer';
+
 const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: true });
 const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
 ```
@@ -107,9 +140,10 @@ The method returns the `inputFinalizer()` function. This finalizer function comp
 
 To add an output:
 
-```javascript
-const recipientOutput =
- new Output({ descriptor: `addr(bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x)` });
+```typescript
+const recipientOutput = new Output({
+  descriptor: 'addr(bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x)'
+});
 recipientOutput.updatePsbtAsOutput({ psbt, value: 10000 });
 ```
 
@@ -117,15 +151,15 @@ recipientOutput.updatePsbtAsOutput({ psbt, value: 10000 });
 
 The `expand()` function parses Bitcoin descriptors into their component parts:
 
-```javascript
+```typescript
 const output = new Output({ descriptor: "your-descriptor-here" });
 const result = output.expand();
 ```
 
 Or through the factory:
 
-```javascript
-const { expand } = descriptors.DescriptorsFactory({ ECPair, BIP32 });
+```typescript
+const { expand } = DescriptorsFactory();
 const result = expand({
   descriptor: "sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))"
 });
@@ -135,7 +169,7 @@ const result = expand({
 
 This library includes two signers: ECPair (single-signature) and BIP32.
 
-```javascript
+```typescript
 import { signers } from '@kukks/bitcoin-descriptors';
 
 // For BIP32
@@ -149,13 +183,13 @@ signers.signECPair({ psbt, ecpair });
 
 1. For each unspent output, call `updatePsbtAsInput`:
 
-   ```javascript
+   ```typescript
    const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
    ```
 
 2. After signing, finalize each input:
 
-   ```javascript
+   ```typescript
    inputFinalizer({ psbt });
    ```
 
@@ -163,7 +197,7 @@ signers.signECPair({ psbt, ecpair });
 
 Helper functions for generating descriptor strings:
 
-```javascript
+```typescript
 import { scriptExpressions, keyExpressionBIP32 } from '@kukks/bitcoin-descriptors';
 ```
 
@@ -171,7 +205,7 @@ The `scriptExpressions` module includes functions like `pkhBIP32()`, `shWpkhBIP3
 
 The `keyExpressionBIP32` function generates BIP32 key expression strings:
 
-```javascript
+```typescript
 keyExpressionBIP32({
   masterNode,     // BIP32Interface
   originPath,     // e.g. "/44'/0'/0'"
@@ -180,6 +214,36 @@ keyExpressionBIP32({
   isPublic        // whether to use xpub or xprv
 });
 ```
+
+## API Reference
+
+### Exports
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `DescriptorsFactory` | function | Creates `Output`, `expand`, `parseKeyExpression` — params optional (defaults to built-in adapters) |
+| `defaultFactory` | object | Pre-built factory using built-in adapters |
+| `nobleECPair` | `ECPairAPI` | Built-in ECPair adapter using `@noble/curves` secp256k1 |
+| `scureBIP32` | `BIP32API` | Built-in BIP32 adapter using `@scure/bip32` |
+| `signers` | namespace | `signECPair`, `signBIP32` and related signing functions |
+| `scriptExpressions` | namespace | `pkhBIP32`, `shWpkhBIP32`, `wpkhBIP32`, etc. |
+| `keyExpressionBIP32` | function | Generate BIP32 key expression strings |
+| `networks` | object | `bitcoin`, `testnet`, `regtest` network definitions |
+| `checksum` | function | Compute/validate descriptor checksums |
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `ECPairAPI` | Factory interface for creating key pairs |
+| `ECPairInterface` | Key pair instance with `sign`, `verify`, `publicKey`, etc. |
+| `BIP32API` | Factory interface for creating HD keys (`fromSeed`, `fromBase58`, etc.) |
+| `BIP32Interface` | HD key instance with `derivePath`, `derive`, `sign`, etc. |
+| `OutputInstance` | Instance returned by `new Output(...)` |
+| `Network` | Network configuration (`bitcoin`, `testnet`, `regtest`) |
+| `PsbtLike` | PSBT interface (compatible with `@scure/btc-signer` Transaction) |
+| `KeyInfo` | Parsed key expression data |
+| `Expansion` | Parsed descriptor expansion data |
 
 ## Building from source
 
