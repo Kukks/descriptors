@@ -6,10 +6,10 @@ This library parses and creates Bitcoin Miniscript Descriptors and generates Par
 
 ## Differences from upstream
 
-This fork migrates the entire library from `bitcoinjs-lib` to the [`@scure/btc-signer`](https://github.com/nicolo-ribaudo/scure-btc-signer) and [`@noble`](https://github.com/paulmillr/noble-curves) ecosystem. Key differences:
+This fork migrates the entire library from `bitcoinjs-lib` to the [`@scure/btc-signer`](https://github.com/paulmillr/scure-btc-signer) and [`@noble`](https://github.com/paulmillr/noble-curves) ecosystem. Key differences:
 
 - **`Buffer` replaced with `Uint8Array`** across the entire public API. All methods that previously returned or accepted `Buffer` now use `Uint8Array`. This is a **breaking change**.
-- **Dependencies replaced**: `bitcoinjs-lib`, `ecpair`, `bip32`, `tiny-secp256k1` are no longer used. The library now depends on [`@scure/btc-signer`](https://github.com/nicolo-ribaudo/scure-btc-signer), [`@scure/bip32`](https://github.com/nicolo-ribaudo/scure-bip32), [`@noble/curves`](https://github.com/paulmillr/noble-curves), [`@noble/hashes`](https://github.com/paulmillr/noble-hashes), and [`@scure/base`](https://github.com/nicolo-ribaudo/scure-base).
+- **Dependencies replaced**: `bitcoinjs-lib`, `ecpair`, `bip32`, `tiny-secp256k1` are no longer used. The library now depends on [`@scure/btc-signer`](https://github.com/paulmillr/scure-btc-signer), [`@scure/bip32`](https://github.com/paulmillr/scure-bip32), [`@noble/curves`](https://github.com/paulmillr/noble-curves), [`@noble/hashes`](https://github.com/paulmillr/noble-hashes), and [`@scure/base`](https://github.com/paulmillr/scure-base).
 - **Built-in adapters**: Ships `nobleECPair` and `scureBIP32` adapters — no more boilerplate. `DescriptorsFactory()` works with zero arguments.
 - **PSBT class**: Uses `Transaction` from `@scure/btc-signer` instead of `Psbt` from `bitcoinjs-lib`.
 - **Ledger support removed**: The `ledger` module and all Ledger-related functions have been removed.
@@ -134,7 +134,7 @@ const psbt = new Transaction({ allowUnknownOutputs: true, disableScriptCheck: tr
 const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
 ```
 
-Here, `psbt` refers to an instance of the [`@scure/btc-signer` Transaction class](https://github.com/nicolo-ribaudo/scure-btc-signer). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction.
+Here, `psbt` refers to an instance of the [`@scure/btc-signer` Transaction class](https://github.com/paulmillr/scure-btc-signer). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction.
 
 The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Complete all necessary signing operations before calling `inputFinalizer()`.
 
