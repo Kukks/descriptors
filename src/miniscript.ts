@@ -20,7 +20,13 @@ function getMiniscriptLib(): {
   satisfier: (
     ms: string,
     opts: { knowns: string[] }
-  ) => { nonMalleableSats: Array<{ asm: string; nLockTime: number | undefined; nSequence: number | undefined }> | null };
+  ) => {
+    nonMalleableSats: Array<{
+      asm: string;
+      nLockTime: number | undefined;
+      nSequence: number | undefined;
+    }> | null;
+  };
 } {
   if (!_miniscriptLib) {
     try {
@@ -29,7 +35,7 @@ function getMiniscriptLib(): {
     } catch {
       throw new Error(
         '@bitcoinerlab/miniscript is required for miniscript descriptors. ' +
-        'Install it: npm install @bitcoinerlab/miniscript'
+          'Install it: npm install @bitcoinerlab/miniscript'
       );
     }
   }
@@ -219,7 +225,10 @@ export function satisfyMiniscript({
   const knowns = Object.keys(expandedKnownsMap);
 
   //satisfier verifies again internally whether expandedKnownsMap with given knowns is sane
-  const { nonMalleableSats } = getMiniscriptLib().satisfier(expandedMiniscript, { knowns });
+  const { nonMalleableSats } = getMiniscriptLib().satisfier(
+    expandedMiniscript,
+    { knowns }
+  );
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
     throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
