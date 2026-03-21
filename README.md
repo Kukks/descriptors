@@ -20,8 +20,15 @@ This fork migrates the entire library from `bitcoinjs-lib` to the [`@scure/btc-s
 
 ```bash
 npm install @kukks/bitcoin-descriptors
+```
+
+If you use **miniscript-based descriptors** (`sh(wsh(...))`, `sh(...)`, `wsh(...)` with miniscript expressions), install the optional peer dependency:
+
+```bash
 npm install @bitcoinerlab/miniscript
 ```
+
+Standard descriptors (`pkh`, `wpkh`, `sh(wpkh(...))`, `tr`, `multi`, `sortedmulti`, `addr`) work without it.
 
 ## Quick Start
 

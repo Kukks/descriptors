@@ -10,7 +10,31 @@ import type { BIP32API } from './types.js';
 import { parseKeyExpression } from './keyExpressions.js';
 import * as RE from './re.js';
 import type { PartialSig } from './types.js';
-import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
+import { createRequire } from 'module';
+
+// Lazy-load @bitcoinerlab/miniscript (optional peer dependency).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _miniscriptLib: any;
+function getMiniscriptLib(): {
+  compileMiniscript: (ms: string) => { issane: boolean; asm: string };
+  satisfier: (
+    ms: string,
+    opts: { knowns: string[] }
+  ) => { nonMalleableSats: Array<{ asm: string; nLockTime: number | undefined; nSequence: number | undefined }> | null };
+} {
+  if (!_miniscriptLib) {
+    try {
+      const require = createRequire(import.meta.url);
+      _miniscriptLib = require('@bitcoinerlab/miniscript');
+    } catch {
+      throw new Error(
+        '@bitcoinerlab/miniscript is required for miniscript descriptors. ' +
+        'Install it: npm install @bitcoinerlab/miniscript'
+      );
+    }
+  }
+  return _miniscriptLib;
+}
 import type { Preimage, TimeConstraints, ExpansionMap } from './types.js';
 
 /**
@@ -132,7 +156,7 @@ export function miniscript2Script({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
 }): Uint8Array {
-  const compiled = compileMiniscript(expandedMiniscript);
+  const compiled = getMiniscriptLib().compileMiniscript(expandedMiniscript);
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
@@ -195,7 +219,7 @@ export function satisfyMiniscript({
   const knowns = Object.keys(expandedKnownsMap);
 
   //satisfier verifies again internally whether expandedKnownsMap with given knowns is sane
-  const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
+  const { nonMalleableSats } = getMiniscriptLib().satisfier(expandedMiniscript, { knowns });
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
     throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);

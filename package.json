@@ -2,7 +2,7 @@
   "name": "@kukks/bitcoin-descriptors",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
   "homepage": "https://github.com/Kukks/descriptors",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -51,14 +51,22 @@
   ],
   "devDependencies": {
     "@bitcoinerlab/configs": "^2.0.0",
+    "@bitcoinerlab/miniscript": "^1.4.3",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
     "regtest-client": "^0.2.1",
     "yargs": "^17.7.2"
   },
+  "peerDependencies": {
+    "@bitcoinerlab/miniscript": "^1.4.3"
+  },
+  "peerDependenciesMeta": {
+    "@bitcoinerlab/miniscript": {
+      "optional": true
+    }
+  },
   "dependencies": {
-    "@bitcoinerlab/miniscript": "^1.4.3",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
