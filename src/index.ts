@@ -27,6 +27,10 @@ export type { Network } from './networks.js';
 // Built-in adapters using @noble/curves and @scure/bip32
 export { nobleECPair, scureBIP32 } from './adapters.js';
 
+// Optional miniscript support — call before using miniscript descriptors
+// if you need to guarantee the library is loaded synchronously.
+export { ensureMiniscriptLoaded } from './miniscript.js';
+
 // Pre-built factory using built-in adapters (zero-config convenience)
 import { DescriptorsFactory } from './descriptors.js';
 export const defaultFactory = DescriptorsFactory();

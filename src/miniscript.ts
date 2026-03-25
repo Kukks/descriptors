@@ -10,11 +10,16 @@ import type { BIP32API } from './types.js';
 import { parseKeyExpression } from './keyExpressions.js';
 import * as RE from './re.js';
 import type { PartialSig } from './types.js';
-import { createRequire } from 'module';
-
 // Lazy-load @bitcoinerlab/miniscript (optional peer dependency).
+// Uses dynamic import() so it works in both Node and browser bundlers (Vite/Rollup).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _miniscriptLib: any;
+// Kick off loading immediately but don't block — the result is awaited on first use.
+const _miniscriptPromise = import('@bitcoinerlab/miniscript').then(
+  m => (_miniscriptLib = m),
+  () => {} // not installed — will error at use time
+);
+
 function getMiniscriptLib(): {
   compileMiniscript: (ms: string) => { issane: boolean; asm: string };
   satisfier: (
@@ -29,17 +34,20 @@ function getMiniscriptLib(): {
   };
 } {
   if (!_miniscriptLib) {
-    try {
-      const require = createRequire(import.meta.url);
-      _miniscriptLib = require('@bitcoinerlab/miniscript');
-    } catch {
-      throw new Error(
-        '@bitcoinerlab/miniscript is required for miniscript descriptors. ' +
-          'Install it: npm install @bitcoinerlab/miniscript'
-      );
-    }
+    throw new Error(
+      '@bitcoinerlab/miniscript is required for miniscript descriptors. ' +
+        'Install it: npm install @bitcoinerlab/miniscript'
+    );
   }
   return _miniscriptLib;
+}
+
+/**
+ * Ensure the optional miniscript library has finished loading.
+ * Call before using any miniscript code path.
+ */
+export async function ensureMiniscriptLoaded(): Promise<void> {
+  await _miniscriptPromise;
 }
 import type { Preimage, TimeConstraints, ExpansionMap } from './types.js';
 
